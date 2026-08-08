@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "269204650355",
+    "project_id": "adminmusicverse",
+    "storage_bucket": "adminmusicverse.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:269204650355:android:4daed1b40789a02413ad06",
+        "android_client_info": {
+          "package_name": "com.example.musicverse_admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCRwFFsFn1VuWHNlO0WWOXufVVU6OYLFso"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:269204650355:android:2422f275c4ab5f7b13ad06",
+        "android_client_info": {
+          "package_name": "com.musicverse.admin.musicverse_admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCRwFFsFn1VuWHNlO0WWOXufVVU6OYLFso"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:269204650355:android:2c5ef26d9bae7c1513ad06",
+        "android_client_info": {
+          "package_name": "com.musicverse.musicverse_academy_admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCRwFFsFn1VuWHNlO0WWOXufVVU6OYLFso"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
