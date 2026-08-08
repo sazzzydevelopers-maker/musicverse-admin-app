@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/material.dart';
-
 import 'package:musicverse_academy_admin/features/auth/services/auth_service.dart';
 import 'package:musicverse_academy_admin/models/admin_model.dart';
 

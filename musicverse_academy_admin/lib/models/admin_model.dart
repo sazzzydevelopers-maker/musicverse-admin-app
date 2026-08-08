@@ -30,7 +30,7 @@ class AdminModel {
       firstname: data['firstname'] ?? '',
       lastname: data['lastname'] ?? '',
       phone: data['phone'] ?? '',
-      role: data['role'] ?? 'admin',
+      role: data['role'] ?? '',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       lastLoginAt: (data['lastLoginAt'] as Timestamp?)?.toDate(),
     );
