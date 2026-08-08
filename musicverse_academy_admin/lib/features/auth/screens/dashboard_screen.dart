@@ -41,6 +41,7 @@ class DashboardScreen extends StatelessWidget {
 
             final bool isVerySmall = width < 450;
             final bool isSmall = width < 700;
+            // ignore: unused_local_variable
             final bool isMedium = width >= 700 && width < 1100;
 
             final double horizontalPadding = isVerySmall
