@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -792,16 +793,16 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       text: existingData?['phone']?.toString() ?? '',
     );
 
-    final courseController = TextEditingController(
-      text: existingData?['course']?.toString() ?? '',
-    );
-
     final monthlyFeeController = TextEditingController(
       text: existingData?['monthlyFee']?.toString() ?? '',
     );
 
+    // Student ID is generated only for a NEW student.
+    // In Edit Student, the existing ID is never shown as an editable field.
     final studentIdController = TextEditingController(
-      text: existingData?['studentId']?.toString() ?? _generateStudentId(),
+      text: isEditing
+          ? (existingData?['studentId']?.toString() ?? '')
+          : _generateStudentId(),
     );
 
     // ==========================================================
@@ -814,11 +815,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     // PHOTO VARIABLES
     // ==========================================================
 
-    XFile? selectedImage;
-
     Uint8List? selectedImageBytes;
 
     String? existingImageUrl = existingData?['profilePhoto']?.toString();
+
+    // Selected course for the required course dropdown.
+    // When editing, the existing Firestore course is preselected.
+    String? selectedCourse = existingData?['course']?.toString();
 
     bool saving = false;
 
@@ -855,8 +858,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                 final Uint8List bytes = await image.readAsBytes();
 
                 setDialogState(() {
-                  selectedImage = image;
-
                   selectedImageBytes = bytes;
 
                   // A new photo has
@@ -941,13 +942,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                   'lastName': lastNameController.text.trim(),
 
-                  'studentId': studentIdController.text.trim(),
-
                   'email': emailController.text.trim(),
 
                   'phone': phoneController.text.trim(),
 
-                  'course': courseController.text.trim(),
+                  'course': selectedCourse!,
 
                   'monthlyFee': double.parse(monthlyFeeController.text.trim()),
 
@@ -984,6 +983,42 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                 // ADD NEW STUDENT
                 // ============================================
                 else {
+                  // The ID displayed in the Add Student form is the ID we
+                  // save. If a very rare collision exists in Firestore,
+                  // generate a new ID before saving.
+                  String newStudentId = studentIdController.text.trim();
+
+                  final CollectionReference<Map<String, dynamic>> users =
+                      FirebaseFirestore.instance.collection('user');
+
+                  for (int attempt = 0; attempt < 20; attempt++) {
+                    final QuerySnapshot<Map<String, dynamic>> existingId =
+                        await users
+                            .where('studentId', isEqualTo: newStudentId)
+                            .limit(1)
+                            .get();
+
+                    if (existingId.docs.isEmpty) {
+                      break;
+                    }
+
+                    newStudentId = _generateStudentId();
+                  }
+
+                  final QuerySnapshot<Map<String, dynamic>> finalCheck =
+                      await users
+                          .where('studentId', isEqualTo: newStudentId)
+                          .limit(1)
+                          .get();
+
+                  if (finalCheck.docs.isNotEmpty) {
+                    throw Exception(
+                      'Unable to generate a unique Student ID. Please try again.',
+                    );
+                  }
+
+                  studentData['studentId'] = newStudentId;
+
                   studentData['createdAt'] = FieldValue.serverTimestamp();
 
                   studentData['accountStatus'] = 'Active';
@@ -1240,6 +1275,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                           style: TextStyle(color: textSecondary, fontSize: 13),
                         ),
 
+                        const SizedBox(height: 2),
+
+                        const Text(
+                          'All other fields are required',
+                          style: TextStyle(color: textSecondary, fontSize: 11),
+                        ),
+
                         const SizedBox(height: 20),
 
                         // ======================================
@@ -1267,13 +1309,41 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         // ======================================
                         // STUDENT ID
                         // ======================================
-                        _buildRequiredTextField(
-                          label: 'Student ID',
-
-                          controller: studentIdController,
-                        ),
-
-                        const SizedBox(height: 12),
+                        // Add Student: show an automatic read-only ID.
+                        // Edit Student: do not show the ID field at all.
+                        if (!isEditing) ...[
+                          TextFormField(
+                            controller: studentIdController,
+                            readOnly: true,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: 'Student ID',
+                              helperText: 'Automatically generated',
+                              helperStyle: const TextStyle(
+                                color: textSecondary,
+                              ),
+                              labelStyle: const TextStyle(color: textSecondary),
+                              filled: true,
+                              fillColor: bgColor,
+                              prefixIcon: const Icon(
+                                Icons.badge_outlined,
+                                color: primaryColor,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
 
                         // ======================================
                         // EMAIL
@@ -1336,12 +1406,109 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         const SizedBox(height: 12),
 
                         // ======================================
-                        // COURSE
+                        // COURSE DROPDOWN
                         // ======================================
-                        _buildRequiredTextField(
-                          label: 'Course (e.g. Piano)',
+                        DropdownButtonFormField<String>(
+                          value: selectedCourse,
 
-                          controller: courseController,
+                          dropdownColor: cardColor,
+
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                          ),
+
+                          icon: const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: textSecondary,
+                          ),
+
+                          decoration: InputDecoration(
+                            labelText: 'Course',
+                            hintText: 'Select Course',
+
+                            labelStyle: const TextStyle(color: textSecondary),
+
+                            hintStyle: const TextStyle(color: textSecondary),
+
+                            filled: true,
+                            fillColor: bgColor,
+
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(
+                                color: primaryColor,
+                                width: 1.5,
+                              ),
+                            ),
+
+                            errorBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: errorColor),
+                            ),
+
+                            focusedErrorBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(
+                                color: errorColor,
+                                width: 1.5,
+                              ),
+                            ),
+
+                            errorStyle: const TextStyle(
+                              color: errorColor,
+                              fontSize: 12,
+                            ),
+                          ),
+
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Course is required';
+                            }
+
+                            return null;
+                          },
+
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Piano',
+                              child: Text('Piano'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Guitar',
+                              child: Text('Guitar'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Drums',
+                              child: Text('Drums'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Flute',
+                              child: Text('Flute'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Violin',
+                              child: Text('Violin'),
+                            ),
+                          ],
+
+                          onChanged: saving
+                              ? null
+                              : (value) {
+                                  setDialogState(() {
+                                    selectedCourse = value;
+                                  });
+                                },
                         ),
 
                         const SizedBox(height: 12),
@@ -1519,9 +1686,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   // ============================================================
 
   String _generateStudentId() {
-    final String time = DateTime.now().millisecondsSinceEpoch.toString();
+    final Random random = Random();
 
-    return 'STU-${time.substring(time.length - 6)}';
+    // Six random digits: 100000 - 999999.
+    // Example: SZYD-STD-483721
+    final int number = 100000 + random.nextInt(900000);
+
+    return 'SZYD-STD-$number';
   }
 
   // ============================================================
