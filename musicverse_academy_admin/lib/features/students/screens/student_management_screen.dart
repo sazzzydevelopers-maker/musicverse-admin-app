@@ -403,8 +403,15 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                               docId,
                                               accountStatus,
                                             );
+                                          } else if (value == 'delete') {
+                                            _showDeleteAccountDialog(
+                                              context,
+                                              docId,
+                                              data,
+                                            );
                                           }
                                         },
+
                                         itemBuilder: (context) => [
                                           const PopupMenuItem(
                                             value: 'view',
@@ -434,6 +441,15 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                                 color: accountStatus == 'Active'
                                                     ? errorColor
                                                     : successColor,
+                                              ),
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'delete',
+                                            child: Text(
+                                              'Delete Account',
+                                              style: TextStyle(
+                                                color: Colors.red,
                                               ),
                                             ),
                                           ),
@@ -783,5 +799,72 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showDeleteAccountDialog(
+    BuildContext context,
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
+    final studentName = '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'
+        .trim();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: cardColor,
+          title: const Text(
+            'Delete Account?',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Are you sure you want to permanently delete '
+            '${studentName.isEmpty ? 'this student' : studentName}\'s account?\n\n'
+            'This action cannot be undone.',
+            style: const TextStyle(color: textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: textSecondary),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: errorColor,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Delete Account'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('user').doc(docId).delete();
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Student account deleted successfully.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to delete account: $e')));
+    }
   }
 }

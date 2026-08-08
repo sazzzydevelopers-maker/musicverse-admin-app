@@ -139,7 +139,9 @@ class AdminLayout extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: selected
-                  ? Border(left: BorderSide(color: primaryColor, width: 3))
+                  ? const Border(
+                      left: BorderSide(color: primaryColor, width: 3),
+                    )
                   : null,
             ),
             child: Row(
