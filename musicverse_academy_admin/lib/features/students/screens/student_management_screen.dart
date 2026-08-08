@@ -27,13 +27,24 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   // ============================================================
 
   static const Color bgColor = Color(0xFF0D1020);
+
   static const Color cardColor = Color(0xFF171C35);
+
   static const Color primaryColor = Color(0xFF7C4DFF);
+
   static const Color secondaryColor = Color(0xFF9D6BFF);
+
   static const Color successColor = Color(0xFF00E676);
+
   static const Color errorColor = Color(0xFFFF5252);
+
   static const Color warningColor = Color(0xFFFFC107);
+
   static const Color textSecondary = Color(0xFFB0B5D3);
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
@@ -71,6 +82,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryColor,
               foregroundColor: Colors.white,
+
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -110,9 +122,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
           final docs = snapshot.data?.docs ?? [];
 
-          // ======================================================
+          // ====================================================
           // STATISTICS
-          // ======================================================
+          // ====================================================
 
           final int totalStudents = docs.length;
 
@@ -132,9 +144,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
           final int pendingFees = totalStudents - paidStudents;
 
-          // ======================================================
+          // ====================================================
           // COURSES
-          // ======================================================
+          // ====================================================
 
           final Set<String> coursesSet = {'All'};
 
@@ -150,9 +162,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
           final List<String> availableCourses = coursesSet.toList();
 
-          // ======================================================
+          // ====================================================
           // FILTER
-          // ======================================================
+          // ====================================================
 
           final filteredDocs = docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
@@ -368,6 +380,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                       decoration: BoxDecoration(
                         color: cardColor,
+
                         borderRadius: BorderRadius.circular(12),
                       ),
 
@@ -437,9 +450,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                     vertical: 8,
                                   ),
 
-                                  // ==================================================
-                                  // PROFILE PHOTO
-                                  // ==================================================
                                   leading: _buildProfileAvatar(
                                     profilePhoto,
                                     firstName,
@@ -624,8 +634,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         backgroundColor: primaryColor,
 
         backgroundImage: NetworkImage(profilePhoto),
-
-        onBackgroundImageError: (exception, stackTrace) {},
       );
     }
 
@@ -650,7 +658,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
     final String last = lastName.isNotEmpty ? lastName[0].toUpperCase() : '';
 
-    return '$first$last'.isEmpty ? 'S' : '$first$last';
+    final String initials = '$first$last';
+
+    return initials.isEmpty ? 'S' : initials;
   }
 
   // ============================================================
@@ -697,6 +707,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
           Text(
             value,
+
             style: TextStyle(
               color: color,
               fontSize: 24,
@@ -709,7 +720,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   // ============================================================
-  // DROPDOWN
+  // DROPDOWN FILTER
   // ============================================================
 
   Widget _buildDropdownFilter(
@@ -751,7 +762,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   // ============================================================
-  // ADD / EDIT STUDENT
+  // ADD / EDIT STUDENT DIALOG
   // ============================================================
 
   void _showAddOrEditStudentDialog(
@@ -760,6 +771,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     Map<String, dynamic>? existingData,
   }) {
     final bool isEditing = docId != null;
+
+    // ==========================================================
+    // CONTROLLERS
+    // ==========================================================
 
     final firstNameController = TextEditingController(
       text: existingData?['firstName']?.toString() ?? '',
@@ -782,19 +797,21 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
 
     final monthlyFeeController = TextEditingController(
-      text: existingData?['monthlyFee']?.toString() ?? '1000',
+      text: existingData?['monthlyFee']?.toString() ?? '',
     );
 
     final studentIdController = TextEditingController(
-      text:
-          existingData?['studentId']?.toString() ??
-          'STU-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+      text: existingData?['studentId']?.toString() ?? _generateStudentId(),
     );
 
     // ==========================================================
-    // IMPORTANT:
-    // These variables belong to THIS dialog.
-    // StatefulBuilder will rebuild the photo preview.
+    // FORM KEY
+    // ==========================================================
+
+    final formKey = GlobalKey<FormState>();
+
+    // ==========================================================
+    // PHOTO VARIABLES
     // ==========================================================
 
     XFile? selectedImage;
@@ -803,7 +820,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
     String? existingImageUrl = existingData?['profilePhoto']?.toString();
 
-    bool uploadingImage = false;
+    bool saving = false;
+
+    // ==========================================================
+    // SHOW DIALOG
+    // ==========================================================
 
     showDialog(
       context: context,
@@ -814,17 +835,17 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
             // ==================================================
-            // PICK IMAGE
+            // PICK PHOTO
             // ==================================================
 
-            Future<void> pickImage() async {
+            Future<void> pickStudentImage() async {
               try {
                 final ImagePicker picker = ImagePicker();
 
                 final XFile? image = await picker.pickImage(
                   source: ImageSource.gallery,
 
-                  imageQuality: 80,
+                  imageQuality: 85,
                 );
 
                 if (image == null) {
@@ -838,9 +859,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                   selectedImageBytes = bytes;
 
-                  // Remove old URL from
-                  // preview because a new
-                  // image was selected.
+                  // A new photo has
+                  // been selected.
                   existingImageUrl = null;
                 });
               } catch (e) {
@@ -849,25 +869,23 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                 }
 
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(content: Text('Unable to select image: $e')),
+                  SnackBar(content: Text('Unable to select photo: $e')),
                 );
               }
             }
 
             // ==================================================
-            // UPLOAD IMAGE
+            // UPLOAD PHOTO
             // ==================================================
 
             Future<String?> uploadStudentImage(String documentId) async {
               if (selectedImageBytes == null) {
-                return existingData?['profilePhoto'];
+                // No new photo selected.
+                // Keep the old photo.
+                return existingData?['profilePhoto']?.toString();
               }
 
               try {
-                setDialogState(() {
-                  uploadingImage = true;
-                });
-
                 final String fileName =
                     '${DateTime.now().millisecondsSinceEpoch}.jpg';
 
@@ -888,17 +906,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               } catch (e) {
                 if (dialogContext.mounted) {
                   ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    SnackBar(content: Text('Image upload failed: $e')),
+                    SnackBar(content: Text('Photo upload failed: $e')),
                   );
                 }
 
                 return null;
-              } finally {
-                if (dialogContext.mounted) {
-                  setDialogState(() {
-                    uploadingImage = false;
-                  });
-                }
               }
             }
 
@@ -907,18 +919,22 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             // ==================================================
 
             Future<void> saveStudent() async {
-              if (firstNameController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(content: Text('Please enter first name.')),
-                );
+              // ----------------------------------------------
+              // VALIDATE ALL REQUIRED FIELDS
+              // ----------------------------------------------
 
+              if (!formKey.currentState!.validate()) {
                 return;
               }
 
+              setDialogState(() {
+                saving = true;
+              });
+
               try {
-                setDialogState(() {
-                  uploadingImage = true;
-                });
+                // ----------------------------------------------
+                // COMMON STUDENT DATA
+                // ----------------------------------------------
 
                 final Map<String, dynamic> studentData = {
                   'firstName': firstNameController.text.trim(),
@@ -933,42 +949,46 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                   'course': courseController.text.trim(),
 
-                  'monthlyFee':
-                      double.tryParse(monthlyFeeController.text.trim()) ??
-                      1000.0,
-
-                  'feeStatus': existingData?['feeStatus'] ?? 'Pending',
-
-                  'accountStatus': existingData?['accountStatus'] ?? 'Active',
+                  'monthlyFee': double.parse(monthlyFeeController.text.trim()),
 
                   'updatedAt': FieldValue.serverTimestamp(),
                 };
 
-                // ==================================================
-                // EDIT EXISTING STUDENT
-                // ==================================================
+                // ============================================
+                // EDIT STUDENT
+                // ============================================
 
                 if (isEditing) {
                   String? imageUrl;
 
                   if (selectedImageBytes != null) {
                     imageUrl = await uploadStudentImage(docId!);
-
-                    if (imageUrl != null) {
-                      studentData['profilePhoto'] = imageUrl;
-                    }
                   }
+
+                  // If new photo exists,
+                  // update it.
+                  if (imageUrl != null && imageUrl.isNotEmpty) {
+                    studentData['profilePhoto'] = imageUrl;
+                  }
+
+                  // --------------------------------------------
+                  // UPDATE FIRESTORE
+                  // --------------------------------------------
 
                   await FirebaseFirestore.instance
                       .collection('user')
                       .doc(docId)
                       .update(studentData);
                 }
-                // ==================================================
+                // ============================================
                 // ADD NEW STUDENT
-                // ==================================================
+                // ============================================
                 else {
                   studentData['createdAt'] = FieldValue.serverTimestamp();
+
+                  studentData['accountStatus'] = 'Active';
+
+                  studentData['feeStatus'] = 'Pending';
 
                   studentData['presentDays'] = 0;
 
@@ -978,41 +998,57 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                   studentData['practiceProgress'] = 0;
 
+                  // --------------------------------------------
+                  // PHOTO IS OPTIONAL
+                  // --------------------------------------------
+
                   studentData['profilePhoto'] = '';
 
-                  studentData['gender'] = 'Not Specified';
+                  // --------------------------------------------
+                  // CREATE FIRESTORE DOCUMENT
+                  // --------------------------------------------
 
-                  studentData['dateOfBirth'] = '2010-01-01';
-
-                  studentData['address'] = 'Hyderabad';
-
-                  // Create Firestore document first.
                   final DocumentReference newStudentRef =
                       await FirebaseFirestore.instance
                           .collection('user')
                           .add(studentData);
 
-                  // Upload image using the
-                  // newly created document ID.
+                  // --------------------------------------------
+                  // UPLOAD PHOTO IF USER SELECTED ONE
+                  // --------------------------------------------
+
                   if (selectedImageBytes != null) {
                     final String? imageUrl = await uploadStudentImage(
                       newStudentRef.id,
                     );
 
-                    if (imageUrl != null) {
+                    if (imageUrl != null && imageUrl.isNotEmpty) {
                       await newStudentRef.update({
                         'profilePhoto': imageUrl,
+
                         'updatedAt': FieldValue.serverTimestamp(),
                       });
                     }
                   }
                 }
 
+                // ============================================
+                // SUCCESS
+                // ============================================
+
                 if (!dialogContext.mounted) {
                   return;
                 }
 
-                Navigator.pop(dialogContext);
+                // IMPORTANT:
+                //
+                // This closes ONLY the
+                // Add/Edit dialog.
+                //
+                // It does NOT go to
+                // Dashboard.
+                //
+                Navigator.of(dialogContext).pop();
 
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -1029,7 +1065,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                 }
 
                 setDialogState(() {
-                  uploadingImage = false;
+                  saving = false;
                 });
 
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -1042,66 +1078,99 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             // PHOTO PREVIEW
             // ==================================================
 
-            Widget photoWidget;
+            Widget photoPreview;
+
+            // --------------------------------------------------
+            // NEWLY SELECTED PHOTO
+            // --------------------------------------------------
 
             if (selectedImageBytes != null) {
-              // NEWLY SELECTED PHOTO
-              photoWidget = ClipOval(
-                child: Image.memory(
-                  selectedImageBytes!,
-                  width: 96,
-                  height: 96,
-                  fit: BoxFit.cover,
-                ),
-              );
-            } else if (existingImageUrl != null &&
-                existingImageUrl!.isNotEmpty) {
-              // EXISTING FIREBASE PHOTO
-              photoWidget = ClipOval(
-                child: Image.network(
-                  existingImageUrl!,
-                  width: 96,
-                  height: 96,
-                  fit: BoxFit.cover,
+              photoPreview = ClipOval(
+                child: SizedBox(
+                  width: 110,
+                  height: 110,
 
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 96,
-                      height: 96,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: primaryColor,
-                      ),
-                      child: const Icon(
-                        Icons.person,
-                        color: Colors.white,
-                        size: 42,
-                      ),
-                    );
-                  },
+                  child: Image.memory(
+                    selectedImageBytes!,
+
+                    width: 110,
+                    height: 110,
+
+                    // IMPORTANT:
+                    // Fill the circle correctly.
+                    fit: BoxFit.cover,
+
+                    alignment: Alignment.center,
+                  ),
                 ),
               );
-            } else {
-              // NO PHOTO
-              photoWidget = Container(
-                width: 96,
-                height: 96,
+            }
+            // --------------------------------------------------
+            // EXISTING FIREBASE PHOTO
+            // --------------------------------------------------
+            else if (existingImageUrl != null &&
+                existingImageUrl!.trim().isNotEmpty) {
+              photoPreview = ClipOval(
+                child: SizedBox(
+                  width: 110,
+                  height: 110,
+
+                  child: Image.network(
+                    existingImageUrl!,
+
+                    width: 110,
+                    height: 110,
+
+                    fit: BoxFit.cover,
+
+                    alignment: Alignment.center,
+
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 110,
+                        height: 110,
+
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+
+                          color: primaryColor,
+                        ),
+
+                        child: const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              );
+            }
+            // --------------------------------------------------
+            // NO PHOTO
+            // --------------------------------------------------
+            else {
+              photoPreview = Container(
+                width: 110,
+                height: 110,
 
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
+
                   color: primaryColor,
                 ),
 
                 child: const Icon(
                   Icons.camera_alt,
                   color: Colors.white,
-                  size: 38,
+                  size: 42,
                 ),
               );
             }
 
             // ==================================================
-            // DIALOG UI
+            // DIALOG
             // ==================================================
 
             return AlertDialog(
@@ -1112,120 +1181,252 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                 style: const TextStyle(
                   color: Colors.white,
+
                   fontWeight: FontWeight.bold,
+
+                  fontSize: 24,
                 ),
               ),
 
               content: SizedBox(
                 width: 450,
 
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                // Prevent the dialog
+                // from becoming too tall.
+                height: 570,
 
-                    children: [
-                      // ==========================================
-                      // STUDENT PHOTO
-                      // ==========================================
-                      GestureDetector(
-                        onTap: uploadingImage ? null : pickImage,
+                child: Form(
+                  key: formKey,
 
-                        child: photoWidget,
-                      ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
 
-                      const SizedBox(height: 10),
+                      children: [
+                        // ======================================
+                        // PHOTO
+                        // ======================================
+                        GestureDetector(
+                          onTap: saving ? null : pickStudentImage,
 
-                      TextButton.icon(
-                        onPressed: uploadingImage ? null : pickImage,
-
-                        icon: const Icon(
-                          Icons.photo_library,
-                          color: primaryColor,
+                          child: photoPreview,
                         ),
 
-                        label: Text(
-                          selectedImageBytes != null
-                              ? 'Change Photo'
-                              : 'Select Photo',
+                        const SizedBox(height: 10),
 
-                          style: const TextStyle(color: Colors.white),
+                        TextButton.icon(
+                          onPressed: saving ? null : pickStudentImage,
+
+                          icon: const Icon(
+                            Icons.photo_library,
+                            color: primaryColor,
+                          ),
+
+                          label: Text(
+                            selectedImageBytes != null
+                                ? 'Change Photo'
+                                : 'Select Photo',
+
+                            style: const TextStyle(
+                              color: Colors.white,
+
+                              fontSize: 14,
+                            ),
+                          ),
                         ),
-                      ),
 
-                      const SizedBox(height: 12),
+                        const Text(
+                          'Student Photo (Optional)',
+                          style: TextStyle(color: textSecondary, fontSize: 13),
+                        ),
 
-                      const Text(
-                        'Student Photo',
-                        style: TextStyle(color: textSecondary, fontSize: 14),
-                      ),
+                        const SizedBox(height: 20),
 
-                      const SizedBox(height: 20),
+                        // ======================================
+                        // FIRST NAME
+                        // ======================================
+                        _buildRequiredTextField(
+                          label: 'First Name',
 
-                      // ==========================================
-                      // FORM
-                      // ==========================================
-                      _buildTextField('First Name', firstNameController),
+                          controller: firstNameController,
+                        ),
 
-                      const SizedBox(height: 12),
+                        const SizedBox(height: 12),
 
-                      _buildTextField('Last Name', lastNameController),
+                        // ======================================
+                        // LAST NAME
+                        // ======================================
+                        _buildRequiredTextField(
+                          label: 'Last Name',
 
-                      const SizedBox(height: 12),
+                          controller: lastNameController,
+                        ),
 
-                      _buildTextField('Student ID', studentIdController),
+                        const SizedBox(height: 12),
 
-                      const SizedBox(height: 12),
+                        // ======================================
+                        // STUDENT ID
+                        // ======================================
+                        _buildRequiredTextField(
+                          label: 'Student ID',
 
-                      _buildTextField('Email', emailController),
+                          controller: studentIdController,
+                        ),
 
-                      const SizedBox(height: 12),
+                        const SizedBox(height: 12),
 
-                      _buildTextField('Phone', phoneController),
+                        // ======================================
+                        // EMAIL
+                        // ======================================
+                        _buildRequiredTextField(
+                          label: 'Email',
 
-                      const SizedBox(height: 12),
+                          controller: emailController,
 
-                      _buildTextField('Course (e.g. Piano)', courseController),
+                          keyboardType: TextInputType.emailAddress,
 
-                      const SizedBox(height: 12),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Email is required';
+                            }
 
-                      _buildTextField(
-                        'Monthly Fee',
-                        monthlyFeeController,
-                        isNumber: true,
-                      ),
-                    ],
+                            final email = value.trim();
+
+                            final emailRegex = RegExp(
+                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                            );
+
+                            if (!emailRegex.hasMatch(email)) {
+                              return 'Enter a valid email address';
+                            }
+
+                            return null;
+                          },
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // ======================================
+                        // PHONE
+                        // ======================================
+                        _buildRequiredTextField(
+                          label: 'Phone',
+
+                          controller: phoneController,
+
+                          keyboardType: TextInputType.phone,
+
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Phone is required';
+                            }
+
+                            final phone = value.trim();
+
+                            final phoneRegex = RegExp(r'^[0-9]{10}$');
+
+                            if (!phoneRegex.hasMatch(phone)) {
+                              return 'Enter a valid 10-digit phone number';
+                            }
+
+                            return null;
+                          },
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // ======================================
+                        // COURSE
+                        // ======================================
+                        _buildRequiredTextField(
+                          label: 'Course (e.g. Piano)',
+
+                          controller: courseController,
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // ======================================
+                        // MONTHLY FEE
+                        // ======================================
+                        _buildRequiredTextField(
+                          label: 'Monthly Fee',
+
+                          controller: monthlyFeeController,
+
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Monthly Fee is required';
+                            }
+
+                            final fee = double.tryParse(value.trim());
+
+                            if (fee == null || fee <= 0) {
+                              return 'Enter a valid fee amount';
+                            }
+
+                            return null;
+                          },
+                        ),
+
+                        const SizedBox(height: 20),
+                      ],
+                    ),
                   ),
                 ),
               ),
 
+              // ==================================================
+              // ACTION BUTTONS
+              // ==================================================
               actions: [
+                // ------------------------------------------------
+                // CANCEL
+                // ------------------------------------------------
                 TextButton(
-                  onPressed: uploadingImage
+                  onPressed: saving
                       ? null
                       : () {
-                          Navigator.pop(dialogContext);
+                          Navigator.of(dialogContext).pop();
                         },
 
                   child: const Text(
                     'Cancel',
+
                     style: TextStyle(color: textSecondary),
                   ),
                 ),
 
+                // ------------------------------------------------
+                // SAVE
+                // ------------------------------------------------
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
+
                     foregroundColor: Colors.white,
+
+                    minimumSize: const Size(90, 44),
+
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
 
-                  onPressed: uploadingImage ? null : saveStudent,
+                  onPressed: saving ? null : saveStudent,
 
-                  child: uploadingImage
+                  child: saving
                       ? const SizedBox(
                           width: 20,
                           height: 20,
+
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
+
                             color: Colors.white,
                           ),
                         )
@@ -1240,20 +1441,34 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   // ============================================================
-  // TEXT FIELD
+  // REQUIRED TEXT FIELD
   // ============================================================
 
-  Widget _buildTextField(
-    String label,
-    TextEditingController controller, {
-    bool isNumber = false,
+  Widget _buildRequiredTextField({
+    required String label,
+
+    required TextEditingController controller,
+
+    TextInputType keyboardType = TextInputType.text,
+
+    String? Function(String?)? validator,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
 
-      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      keyboardType: keyboardType,
 
       style: const TextStyle(color: Colors.white),
+
+      validator:
+          validator ??
+          (value) {
+            if (value == null || value.trim().isEmpty) {
+              return '$label is required';
+            }
+
+            return null;
+          },
 
       decoration: InputDecoration(
         labelText: label,
@@ -1266,10 +1481,47 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
+
           borderSide: BorderSide.none,
         ),
+
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+
+          borderSide: BorderSide.none,
+        ),
+
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+
+          borderSide: const BorderSide(color: primaryColor, width: 1.5),
+        ),
+
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+
+          borderSide: const BorderSide(color: errorColor),
+        ),
+
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+
+          borderSide: const BorderSide(color: errorColor, width: 1.5),
+        ),
+
+        errorStyle: const TextStyle(color: errorColor, fontSize: 12),
       ),
     );
+  }
+
+  // ============================================================
+  // GENERATE STUDENT ID
+  // ============================================================
+
+  String _generateStudentId() {
+    final String time = DateTime.now().millisecondsSinceEpoch.toString();
+
+    return 'STU-${time.substring(time.length - 6)}';
   }
 
   // ============================================================
@@ -1285,74 +1537,104 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     showDialog(
       context: context,
 
-      builder: (context) => AlertDialog(
-        backgroundColor: cardColor,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: cardColor,
 
-        title: Text(
-          '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}',
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+          title: Text(
+            '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}',
 
-        content: SizedBox(
-          width: 400,
+            style: const TextStyle(
+              color: Colors.white,
 
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                // PHOTO
-                if (profilePhoto.isNotEmpty)
-                  ClipOval(
-                    child: Image.network(
-                      profilePhoto,
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                else
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundColor: primaryColor,
-                    child: Icon(Icons.person, color: Colors.white, size: 45),
-                  ),
-
-                const SizedBox(height: 20),
-
-                _detailRow('Student ID', data['studentId']?.toString()),
-
-                _detailRow('Email', data['email']?.toString()),
-
-                _detailRow('Phone', data['phone']?.toString()),
-
-                _detailRow('Course', data['course']?.toString()),
-
-                _detailRow('Gender', data['gender']?.toString()),
-
-                _detailRow('Date of Birth', data['dateOfBirth']?.toString()),
-
-                _detailRow('Address', data['address']?.toString()),
-
-                _detailRow('Monthly Fee', data['monthlyFee']?.toString()),
-
-                _detailRow('Fee Status', data['feeStatus']?.toString()),
-
-                _detailRow('Account Status', data['accountStatus']?.toString()),
-              ],
+              fontWeight: FontWeight.bold,
             ),
           ),
-        ),
 
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
+          content: SizedBox(
+            width: 400,
 
-            child: const Text('Close', style: TextStyle(color: primaryColor)),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  // ============================================
+                  // PHOTO
+                  // ============================================
+                  if (profilePhoto.isNotEmpty)
+                    ClipOval(
+                      child: Image.network(
+                        profilePhoto,
+
+                        width: 100,
+
+                        height: 100,
+
+                        fit: BoxFit.cover,
+
+                        errorBuilder: (context, error, stackTrace) {
+                          return const CircleAvatar(
+                            radius: 50,
+
+                            backgroundColor: primaryColor,
+
+                            child: Icon(
+                              Icons.person,
+                              color: Colors.white,
+                              size: 45,
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  else
+                    const CircleAvatar(
+                      radius: 50,
+
+                      backgroundColor: primaryColor,
+
+                      child: Icon(Icons.person, color: Colors.white, size: 45),
+                    ),
+
+                  const SizedBox(height: 20),
+
+                  _detailRow('Student ID', data['studentId']?.toString()),
+
+                  _detailRow('Email', data['email']?.toString()),
+
+                  _detailRow('Phone', data['phone']?.toString()),
+
+                  _detailRow('Course', data['course']?.toString()),
+
+                  _detailRow('Gender', data['gender']?.toString()),
+
+                  _detailRow('Date of Birth', data['dateOfBirth']?.toString()),
+
+                  _detailRow('Address', data['address']?.toString()),
+
+                  _detailRow('Monthly Fee', data['monthlyFee']?.toString()),
+
+                  _detailRow('Fee Status', data['feeStatus']?.toString()),
+
+                  _detailRow(
+                    'Account Status',
+                    data['accountStatus']?.toString(),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
+
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+
+              child: const Text('Close', style: TextStyle(color: primaryColor)),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1373,8 +1655,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
             child: Text(
               '$label:',
+
               style: const TextStyle(
                 color: textSecondary,
+
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1383,6 +1667,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           Expanded(
             child: Text(
               value ?? 'N/A',
+
               style: const TextStyle(color: Colors.white),
             ),
           ),
@@ -1405,52 +1690,62 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     showDialog(
       context: context,
 
-      builder: (context) => AlertDialog(
-        backgroundColor: cardColor,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: cardColor,
 
-        title: Text(
-          '$newStatus Student',
-          style: const TextStyle(color: Colors.white),
-        ),
+          title: Text(
+            '$newStatus Student',
 
-        content: Text(
-          'Are you sure you want to change this student\'s account status to $newStatus?',
-          style: const TextStyle(color: textSecondary),
-        ),
-
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-
-            child: const Text('Cancel', style: TextStyle(color: textSecondary)),
+            style: const TextStyle(color: Colors.white),
           ),
 
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: newStatus == 'Active'
-                  ? successColor
-                  : errorColor,
+          content: Text(
+            'Are you sure you want to change this student\'s account status to $newStatus?',
+
+            style: const TextStyle(color: textSecondary),
+          ),
+
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+
+              child: const Text(
+                'Cancel',
+
+                style: TextStyle(color: textSecondary),
+              ),
             ),
 
-            onPressed: () async {
-              await FirebaseFirestore.instance
-                  .collection('user')
-                  .doc(docId)
-                  .update({
-                    'accountStatus': newStatus,
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: newStatus == 'Active'
+                    ? successColor
+                    : errorColor,
+              ),
 
-                    'updatedAt': FieldValue.serverTimestamp(),
-                  });
+              onPressed: () async {
+                await FirebaseFirestore.instance
+                    .collection('user')
+                    .doc(docId)
+                    .update({
+                      'accountStatus': newStatus,
 
-              if (context.mounted) {
-                Navigator.pop(context);
-              }
-            },
+                      'updatedAt': FieldValue.serverTimestamp(),
+                    });
 
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+              },
+
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1469,41 +1764,53 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     final bool? confirmed = await showDialog<bool>(
       context: context,
 
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: cardColor,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: cardColor,
 
-        title: const Text(
-          'Delete Account?',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+          title: const Text(
+            'Delete Account?',
 
-        content: Text(
-          'Are you sure you want to permanently delete '
-          '${studentName.isEmpty ? 'this student' : studentName}\'s account?\n\n'
-          'This action cannot be undone.',
-
-          style: const TextStyle(color: textSecondary),
-        ),
-
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-
-            child: const Text('Cancel', style: TextStyle(color: textSecondary)),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
 
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: errorColor,
-              foregroundColor: Colors.white,
+          content: Text(
+            'Are you sure you want to permanently delete '
+            '${studentName.isEmpty ? 'this student' : studentName}\'s account?\n\n'
+            'This action cannot be undone.',
+
+            style: const TextStyle(color: textSecondary),
+          ),
+
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+
+              child: const Text(
+                'Cancel',
+
+                style: TextStyle(color: textSecondary),
+              ),
             ),
 
-            onPressed: () => Navigator.pop(dialogContext, true),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: errorColor,
 
-            child: const Text('Delete Account'),
-          ),
-        ],
-      ),
+                foregroundColor: Colors.white,
+              ),
+
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+
+              child: const Text('Delete Account'),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed != true) {
