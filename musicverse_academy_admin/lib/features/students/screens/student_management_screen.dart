@@ -998,6 +998,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   if (imageBytesToUpload != null) {
                     // Start the optional photo upload without blocking
                     // the Save button.
+                    // ignore: unnecessary_non_null_assertion
                     uploadStudentImage(docId!).then((imageUrl) async {
                       if (imageUrl != null && imageUrl.isNotEmpty) {
                         await FirebaseFirestore.instance
@@ -1445,7 +1446,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         // COURSE DROPDOWN
                         // ======================================
                         DropdownButtonFormField<String>(
-                          value: selectedCourse,
+                          initialValue: selectedCourse,
 
                           dropdownColor: cardColor,
 
