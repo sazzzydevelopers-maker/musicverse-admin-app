@@ -1,10 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:go_router/go_router.dart';
-
+import 'package:musicverse_academy_admin/core/widgets/admin_layout.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/forgot_password_screen.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/dashboard_screen.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/login_screen.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/login_animation_screen.dart';
+import 'package:musicverse_academy_admin/features/students/screens/student_management_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/login',
@@ -52,9 +53,23 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const LoginAnimationScreen(),
     ),
 
-    GoRoute(
-      path: '/dashboard',
-      builder: (context, state) => const DashboardScreen(),
+    // PERMANENT ADMIN SIDEBAR
+    ShellRoute(
+      builder: (context, state, child) {
+        return AdminLayout(child: child);
+      },
+
+      routes: [
+        GoRoute(
+          path: '/dashboard',
+          builder: (context, state) => const DashboardScreen(),
+        ),
+
+        GoRoute(
+          path: '/students',
+          builder: (context, state) => const StudentManagementScreen(),
+        ),
+      ],
     ),
   ],
 );
