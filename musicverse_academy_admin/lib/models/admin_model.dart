@@ -7,7 +7,6 @@ class AdminModel {
   final String lastname;
   final String phone;
   final String role;
-  final bool isactive;
   final DateTime? createdAt;
   final DateTime? lastLoginAt;
 
@@ -18,13 +17,13 @@ class AdminModel {
     required this.lastname,
     required this.phone,
     required this.role,
-    required this.isactive,
     this.createdAt,
     this.lastLoginAt,
   });
 
   factory AdminModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
+
     return AdminModel(
       uid: data['uid'] ?? doc.id,
       email: data['email'] ?? '',
@@ -32,7 +31,6 @@ class AdminModel {
       lastname: data['lastname'] ?? '',
       phone: data['phone'] ?? '',
       role: data['role'] ?? 'admin',
-      isactive: data['isactive'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       lastLoginAt: (data['lastLoginAt'] as Timestamp?)?.toDate(),
     );
@@ -46,7 +44,6 @@ class AdminModel {
       'lastname': lastname,
       'phone': phone,
       'role': role,
-      'isactive': isactive,
       'createdAt': createdAt != null
           ? Timestamp.fromDate(createdAt!)
           : FieldValue.serverTimestamp(),

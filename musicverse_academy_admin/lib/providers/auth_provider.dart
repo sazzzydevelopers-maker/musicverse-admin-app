@@ -16,8 +16,7 @@ class AuthProvider extends ChangeNotifier {
   AdminModel? get adminModel => _adminModel;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  bool get isAuthenticated =>
-      _firebaseUser != null && _adminModel != null && _adminModel!.isactive;
+  bool get isAuthenticated => _firebaseUser != null && _adminModel != null;
 
   AuthProvider() {
     _initAuthListener();
@@ -66,12 +65,14 @@ class AuthProvider extends ChangeNotifier {
         // 2. Verify existence and permissions in the live 'admin' collection
         AdminModel? admin = await _adminRepository.getAdminByAuthUid(uid);
 
-        if (admin == null || !admin.isactive) {
+        if (admin == null) {
           await _auth.signOut();
-          _errorMessage =
-              'Access Denied: You are not authorized as an active admin.';
+
+          _errorMessage = 'Access Denied: You are not authorized as an admin.';
+
           _isLoading = false;
           notifyListeners();
+
           return false;
         }
 
