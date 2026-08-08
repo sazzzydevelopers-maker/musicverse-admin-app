@@ -820,8 +820,33 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     String? existingImageUrl = existingData?['profilePhoto']?.toString();
 
     // Selected course for the required course dropdown.
-    // When editing, the existing Firestore course is preselected.
-    String? selectedCourse = existingData?['course']?.toString();
+    //
+    // IMPORTANT:
+    // The dropdown has only these allowed values:
+    // Piano, Guitar, Drums, Flute, Violin.
+    //
+    // Older Firestore records may contain values such as
+    // "Advanced Piano". If that value is used directly as the
+    // DropdownButton value, Flutter throws:
+    // "There should be exactly one item with DropdownButton's value."
+    //
+    // Therefore, only use the existing value when it is one of
+    // the current allowed course values. Otherwise show "Select Course"
+    // and require the admin to choose a valid course before saving.
+    const List<String> courseOptions = [
+      'Piano',
+      'Guitar',
+      'Drums',
+      'Flute',
+      'Violin',
+    ];
+
+    final String? existingCourse = existingData?['course']?.toString().trim();
+
+    String? selectedCourse =
+        existingCourse != null && courseOptions.contains(existingCourse)
+        ? existingCourse
+        : null;
 
     bool saving = false;
 
@@ -905,12 +930,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                 return downloadUrl;
               } catch (e) {
-                if (dialogContext.mounted) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    SnackBar(content: Text('Photo upload failed: $e')),
-                  );
-                }
-
+                // Photo is optional. A Storage failure must never
+                // prevent the student record from being saved.
+                debugPrint('Photo upload failed: $e');
                 return null;
               }
             }
@@ -958,26 +980,36 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                 // ============================================
 
                 if (isEditing) {
-                  String? imageUrl;
-
-                  if (selectedImageBytes != null) {
-                    imageUrl = await uploadStudentImage(docId!);
-                  }
-
-                  // If new photo exists,
-                  // update it.
-                  if (imageUrl != null && imageUrl.isNotEmpty) {
-                    studentData['profilePhoto'] = imageUrl;
-                  }
-
                   // --------------------------------------------
-                  // UPDATE FIRESTORE
+                  // UPDATE FIRESTORE FIRST
                   // --------------------------------------------
-
+                  //
+                  // Do NOT wait for Firebase Storage here.
+                  // Firestore data should be saved immediately and
+                  // the dialog should close. The optional photo is
+                  // uploaded in the background afterwards.
                   await FirebaseFirestore.instance
                       .collection('user')
                       .doc(docId)
                       .update(studentData);
+
+                  final Uint8List? imageBytesToUpload = selectedImageBytes;
+
+                  if (imageBytesToUpload != null) {
+                    // Start the optional photo upload without blocking
+                    // the Save button.
+                    uploadStudentImage(docId!).then((imageUrl) async {
+                      if (imageUrl != null && imageUrl.isNotEmpty) {
+                        await FirebaseFirestore.instance
+                            .collection('user')
+                            .doc(docId)
+                            .update({
+                              'profilePhoto': imageUrl,
+                              'updatedAt': FieldValue.serverTimestamp(),
+                            });
+                      }
+                    });
+                  }
                 }
                 // ============================================
                 // ADD NEW STUDENT
@@ -1049,21 +1081,25 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                           .add(studentData);
 
                   // --------------------------------------------
-                  // UPLOAD PHOTO IF USER SELECTED ONE
+                  // OPTIONAL PHOTO UPLOAD
                   // --------------------------------------------
-
+                  //
+                  // IMPORTANT:
+                  // Do NOT await Firebase Storage here.
+                  //
+                  // Firestore has already created the student.
+                  // The Save button must finish immediately instead
+                  // of staying on a loading spinner while Storage
+                  // uploads the optional image.
                   if (selectedImageBytes != null) {
-                    final String? imageUrl = await uploadStudentImage(
-                      newStudentRef.id,
-                    );
-
-                    if (imageUrl != null && imageUrl.isNotEmpty) {
-                      await newStudentRef.update({
-                        'profilePhoto': imageUrl,
-
-                        'updatedAt': FieldValue.serverTimestamp(),
-                      });
-                    }
+                    uploadStudentImage(newStudentRef.id).then((imageUrl) async {
+                      if (imageUrl != null && imageUrl.isNotEmpty) {
+                        await newStudentRef.update({
+                          'profilePhoto': imageUrl,
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        });
+                      }
+                    });
                   }
                 }
 
@@ -1472,35 +1508,23 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                           ),
 
                           validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
+                            if (value == null ||
+                                value.trim().isEmpty ||
+                                !courseOptions.contains(value)) {
                               return 'Course is required';
                             }
 
                             return null;
                           },
 
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Piano',
-                              child: Text('Piano'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Guitar',
-                              child: Text('Guitar'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Drums',
-                              child: Text('Drums'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Flute',
-                              child: Text('Flute'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Violin',
-                              child: Text('Violin'),
-                            ),
-                          ],
+                          items: courseOptions
+                              .map(
+                                (course) => DropdownMenuItem<String>(
+                                  value: course,
+                                  child: Text(course),
+                                ),
+                              )
+                              .toList(),
 
                           onChanged: saving
                               ? null
