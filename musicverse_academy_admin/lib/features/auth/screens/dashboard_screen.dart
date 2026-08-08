@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb;
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -52,12 +53,31 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: errorColor),
-            tooltip: "Logout",
+            icon: const Icon(Icons.logout),
             onPressed: () async {
-              await authProvider.signOut();
-              if (context.mounted) {
-                context.go('/login');
+              debugPrint('================================');
+              debugPrint('LOGOUT BUTTON CLICKED');
+              debugPrint('================================');
+
+              try {
+                debugPrint('LOGOUT STARTED');
+
+                await fb.FirebaseAuth.instance.signOut();
+
+                debugPrint('LOGOUT SUCCESSFUL');
+                debugPrint('USER IS NOW LOGGED OUT');
+                debugPrint('================================');
+
+                if (context.mounted) {
+                  context.go('/login');
+                }
+              } catch (e, stackTrace) {
+                debugPrint('================================');
+                debugPrint('LOGOUT FAILED');
+                debugPrint('ERROR: $e');
+                debugPrint('STACK TRACE:');
+                debugPrint('$stackTrace');
+                debugPrint('================================');
               }
             },
           ),

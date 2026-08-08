@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,49 +19,130 @@ class _LoginAnimationScreenState extends State<LoginAnimationScreen>
   late Animation<double> _logoOpacity;
   late Animation<double> _glowOpacity;
 
+  Timer? _navigationTimer;
+
   @override
   void initState() {
     super.initState();
 
-    // Logo animation
-    _logoController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
+    // ============================================================
+    // LOGIN ANIMATION SCREEN OPENED
+    // ============================================================
 
-    _logoScale = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _logoController, curve: Curves.easeOutBack),
-    );
+    debugPrint('==============================================');
+    debugPrint('LOGIN ANIMATION SCREEN OPENED');
+    debugPrint('==============================================');
 
-    _logoOpacity = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _logoController, curve: Curves.easeIn));
+    try {
+      // ============================================================
+      // LOGO ANIMATION CONTROLLER
+      // ============================================================
 
-    _glowOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _logoController, curve: Curves.easeInOut),
-    );
+      _logoController = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 5),
+      );
 
-    // Background animation
-    _backgroundController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat(reverse: true);
+      // ============================================================
+      // LOGO SCALE
+      // ============================================================
 
-    _logoController.forward();
+      _logoScale = Tween<double>(begin: 0.4, end: 1.0).animate(
+        CurvedAnimation(parent: _logoController, curve: Curves.easeOutBack),
+      );
 
-    // 4 second animation → Dashboard
-    Timer(const Duration(seconds: 4), () {
-      if (mounted) {
+      // ============================================================
+      // LOGO OPACITY
+      // ============================================================
+
+      _logoOpacity = Tween<double>(
+        begin: 0.0,
+        end: 1.0,
+      ).animate(CurvedAnimation(parent: _logoController, curve: Curves.easeIn));
+
+      // ============================================================
+      // GLOW OPACITY
+      // ============================================================
+
+      _glowOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _logoController, curve: Curves.easeInOut),
+      );
+
+      // ============================================================
+      // BACKGROUND ANIMATION
+      // ============================================================
+
+      _backgroundController = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 4),
+      );
+
+      _backgroundController.repeat(reverse: true);
+
+      // ============================================================
+      // ANIMATION START
+      // ============================================================
+
+      debugPrint('LOGIN ANIMATION STARTED');
+
+      // Start logo animation
+      _logoController.forward();
+
+      // ============================================================
+      // WAIT FOR 5 SECONDS
+      // THEN GO TO DASHBOARD
+      // ============================================================
+
+      _navigationTimer = Timer(const Duration(seconds: 5), () {
+        if (!mounted) {
+          debugPrint('==============================================');
+          debugPrint('LOGIN ANIMATION FAILED');
+          debugPrint('Animation screen was disposed before completion.');
+          debugPrint('==============================================');
+
+          return;
+        }
+
+        // ========================================================
+        // ANIMATION SUCCESS
+        // ========================================================
+
+        debugPrint('==============================================');
+        debugPrint('LOGIN ANIMATION SUCCESS');
+        debugPrint('LOGIN ANIMATION COMPLETED');
+        debugPrint('==============================================');
+
+        // ========================================================
+        // GO TO DASHBOARD
+        // ========================================================
+
+        debugPrint('GOING TO DASHBOARD...');
+
         context.go('/dashboard');
-      }
-    });
+      });
+    } catch (e, stackTrace) {
+      // ============================================================
+      // ANIMATION FAILED
+      // ============================================================
+
+      debugPrint('==============================================');
+      debugPrint('LOGIN ANIMATION FAILED');
+      debugPrint('ERROR: $e');
+      debugPrint('STACK TRACE:');
+      debugPrint('$stackTrace');
+      debugPrint('==============================================');
+    }
   }
 
   @override
   void dispose() {
+    // Cancel navigation timer
+    _navigationTimer?.cancel();
+
+    // Dispose animation controllers
     _logoController.dispose();
     _backgroundController.dispose();
+
     super.dispose();
   }
 
@@ -73,7 +155,9 @@ class _LoginAnimationScreenState extends State<LoginAnimationScreen>
         builder: (context, child) {
           return Stack(
             children: [
-              // Animated purple glow
+              // ======================================================
+              // LEFT PURPLE GLOW
+              // ======================================================
               Positioned(
                 left: -100 + (_backgroundController.value * 80),
                 top: 150,
@@ -92,6 +176,9 @@ class _LoginAnimationScreenState extends State<LoginAnimationScreen>
                 ),
               ),
 
+              // ======================================================
+              // RIGHT PURPLE GLOW
+              // ======================================================
               Positioned(
                 right: -100 - (_backgroundController.value * 80),
                 bottom: 100,
@@ -110,7 +197,9 @@ class _LoginAnimationScreenState extends State<LoginAnimationScreen>
                 ),
               ),
 
-              // Main animation
+              // ======================================================
+              // MAIN ANIMATION
+              // ======================================================
               Center(
                 child: AnimatedBuilder(
                   animation: _logoController,
@@ -122,7 +211,9 @@ class _LoginAnimationScreenState extends State<LoginAnimationScreen>
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Glow
+                            // ==========================================
+                            // LOGO GLOW
+                            // ==========================================
                             Container(
                               width: 150,
                               height: 150,
@@ -157,6 +248,9 @@ class _LoginAnimationScreenState extends State<LoginAnimationScreen>
 
                             const SizedBox(height: 30),
 
+                            // ==========================================
+                            // APP NAME
+                            // ==========================================
                             const Text(
                               'MusicVerse Academy',
                               style: TextStyle(
@@ -169,6 +263,9 @@ class _LoginAnimationScreenState extends State<LoginAnimationScreen>
 
                             const SizedBox(height: 10),
 
+                            // ==========================================
+                            // ADMIN PORTAL
+                            // ==========================================
                             const Text(
                               'Admin Portal',
                               style: TextStyle(
@@ -180,7 +277,9 @@ class _LoginAnimationScreenState extends State<LoginAnimationScreen>
 
                             const SizedBox(height: 35),
 
-                            // Loading indicator
+                            // ==========================================
+                            // LOADING INDICATOR
+                            // ==========================================
                             const SizedBox(
                               width: 35,
                               height: 35,

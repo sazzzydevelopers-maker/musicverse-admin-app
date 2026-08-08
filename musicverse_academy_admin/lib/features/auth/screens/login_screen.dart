@@ -25,25 +25,46 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    if (_formKey.currentState!.validate()) {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final success = await authProvider.signIn(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
+    if (!_formKey.currentState!.validate()) {
+      debugPrint('❌ LOGIN NOT ATTEMPTED: Form validation failed');
+      return;
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    debugPrint('================================');
+    debugPrint('🔐 LOGIN BUTTON CLICKED');
+    debugPrint('📧 Email: ${_emailController.text.trim()}');
+
+    final success = await authProvider.signIn(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      debugPrint('================================');
+      debugPrint('✅ LOGIN SUCCESSFUL');
+      debugPrint('👤 USER IS AUTHENTICATED');
+      debugPrint('UID: ${authProvider.currentUser?.uid}');
+      debugPrint('EMAIL: ${authProvider.currentUser?.email}');
+      debugPrint('➡️ Opening login animation...');
+      debugPrint('================================');
+
+      context.go('/login-animation');
+    } else {
+      debugPrint('================================');
+      debugPrint('❌ LOGIN FAILED');
+      debugPrint('Reason: ${authProvider.errorMessage ?? "Unknown error"}');
+      debugPrint('================================');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Login failed'),
+          backgroundColor: AppColors.error,
+        ),
       );
-
-      if (!mounted) return;
-
-      if (success) {
-        context.go('/dashboard');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(authProvider.errorMessage ?? 'Login failed'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
     }
   }
 
