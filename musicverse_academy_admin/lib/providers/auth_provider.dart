@@ -39,7 +39,7 @@ class AuthProvider extends ChangeNotifier {
   // Fetch admin details from the live 'admin' collection
   Future<void> fetchAdminProfile(String uid) async {
     try {
-      _adminModel = await _adminRepository.getAdminById(uid);
+      _adminModel = await _adminRepository.getAdminByAuthUid(uid);
       notifyListeners();
     } catch (e) {
       _errorMessage = e.toString();
@@ -64,7 +64,7 @@ class AuthProvider extends ChangeNotifier {
         String uid = userCredential.user!.uid;
 
         // 2. Verify existence and permissions in the live 'admin' collection
-        AdminModel? admin = await _adminRepository.getAdminById(uid);
+        AdminModel? admin = await _adminRepository.getAdminByAuthUid(uid);
 
         if (admin == null || !admin.isactive) {
           await _auth.signOut();

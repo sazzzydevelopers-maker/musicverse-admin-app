@@ -23,7 +23,6 @@ class AdminModel {
     this.lastLoginAt,
   });
 
-  // Factory constructor to create an AdminModel from a Firestore Document snapshot
   factory AdminModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     return AdminModel(
@@ -33,13 +32,12 @@ class AdminModel {
       lastname: data['lastname'] ?? '',
       phone: data['phone'] ?? '',
       role: data['role'] ?? 'admin',
-      isactive: data['isactive'] ?? true,
+      isactive: data['isactive'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       lastLoginAt: (data['lastLoginAt'] as Timestamp?)?.toDate(),
     );
   }
 
-  // Convert AdminModel to Map for Firestore writing if needed
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
