@@ -6,6 +6,7 @@ import 'package:musicverse_academy_admin/features/auth/screens/forgot_password_s
 import 'package:musicverse_academy_admin/features/dashboard/screens/dashboard_screen.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/login_screen.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/login_animation_screen.dart';
+import 'package:musicverse_academy_admin/features/payments/screens/payment_dashboard_screen.dart';
 import 'package:musicverse_academy_admin/features/students/screens/student_management_screen.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -74,6 +75,10 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '/attendance',
           builder: (context, state) => const AttendanceDashboardScreen(),
+        ),
+        GoRoute(
+          path: '/payments',
+          builder: (context, state) => const PaymentDashboardScreen(),
         ),
       ],
     ),

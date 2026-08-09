@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../attendance/screens/attendance_dashboard_screen.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../students/screens/student_management_screen.dart';
+import '../../payments/screens/payment_dashboard_screen.dart';
 
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
@@ -93,8 +94,8 @@ class _AdminShellState extends State<AdminShell> {
                 final item = _navigationItems[index];
 
                 // Only Dashboard and Students are currently implemented.
-                final isImplemented = index == 0 || index == 1 || index == 5;
-
+                final isImplemented =
+                    index == 0 || index == 1 || index == 4 || index == 5;
                 final isSelected = _selectedIndex == index;
 
                 return Padding(
@@ -190,6 +191,9 @@ class _AdminShellState extends State<AdminShell> {
 
       case 1:
         return const StudentManagementScreen();
+
+      case 4:
+        return const PaymentDashboardScreen();
 
       case 5:
         return const AttendanceDashboardScreen();
