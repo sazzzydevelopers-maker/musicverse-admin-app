@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:go_router/go_router.dart';
 import 'package:musicverse_academy_admin/features/admin/screen/admin_shell.dart';
+import 'package:musicverse_academy_admin/features/attendance/screens/attendance_dashboard_screen.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/forgot_password_screen.dart';
 import 'package:musicverse_academy_admin/features/dashboard/screens/dashboard_screen.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/login_screen.dart';
@@ -68,6 +69,11 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '/students',
           builder: (context, state) => const StudentManagementScreen(),
+        ),
+        // Add to your existing GoRouter routes list:
+        GoRoute(
+          path: '/attendance',
+          builder: (context, state) => const AttendanceDashboardScreen(),
         ),
       ],
     ),

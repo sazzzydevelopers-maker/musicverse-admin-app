@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../../attendance/screens/attendance_dashboard_screen.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../students/screens/student_management_screen.dart';
 
@@ -93,7 +93,7 @@ class _AdminShellState extends State<AdminShell> {
                 final item = _navigationItems[index];
 
                 // Only Dashboard and Students are currently implemented.
-                final isImplemented = index == 0 || index == 1;
+                final isImplemented = index == 0 || index == 1 || index == 5;
 
                 final isSelected = _selectedIndex == index;
 
@@ -190,6 +190,9 @@ class _AdminShellState extends State<AdminShell> {
 
       case 1:
         return const StudentManagementScreen();
+
+      case 5:
+        return const AttendanceDashboardScreen();
 
       default:
         return const DashboardScreen();
