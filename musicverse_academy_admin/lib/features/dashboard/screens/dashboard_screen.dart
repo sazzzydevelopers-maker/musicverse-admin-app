@@ -235,9 +235,8 @@ class DashboardScreen extends StatelessWidget {
   ) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('user').snapshots(),
-
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      builder: (context, userSnapshot) {
+        if (userSnapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(30),
             child: Center(
@@ -246,126 +245,140 @@ class DashboardScreen extends StatelessWidget {
           );
         }
 
-        if (snapshot.hasError) {
+        if (userSnapshot.hasError) {
           return _buildErrorCard('Unable to load student statistics.');
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('feePayments')
+              .snapshots(),
+          builder: (context, paymentSnapshot) {
+            if (paymentSnapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.all(30),
+                child: Center(
+                  child: CircularProgressIndicator(color: primaryColor),
+                ),
+              );
+            }
 
-        int totalStudents = 0;
-        int activeStudents = 0;
-        int inactiveStudents = 0;
-        int paidStudents = 0;
-        int pendingFees = 0;
+            if (paymentSnapshot.hasError) {
+              return _buildErrorCard('Unable to load payment information.');
+            }
 
-        for (final doc in docs) {
-          final data = doc.data() as Map<String, dynamic>;
+            final studentDocs = userSnapshot.data?.docs ?? [];
+            final paymentDocs = paymentSnapshot.data?.docs ?? [];
 
-          final accountStatus = data['accountStatus']?.toString() ?? '';
+            int activeStudents = 0;
+            int inactiveStudents = 0;
+            int paidStudents = 0;
+            int pendingStudents = 0;
+            int notPaidStudents = 0;
 
-          final feeStatus = data['feeStatus']?.toString() ?? '';
+            for (final studentDoc in studentDocs) {
+              final data = studentDoc.data() as Map<String, dynamic>;
 
-          totalStudents++;
+              final accountStatus = data['accountStatus']?.toString() ?? '';
 
-          if (accountStatus == 'Active') {
-            activeStudents++;
-          } else {
-            inactiveStudents++;
-          }
+              if (accountStatus.toLowerCase() == 'active') {
+                activeStudents++;
+              } else {
+                inactiveStudents++;
+              }
 
-          if (feeStatus == 'Paid') {
-            paidStudents++;
-          } else {
-            pendingFees++;
-          }
-        }
+              final paymentStatus = _getCurrentPaymentStatus(
+                studentDoc,
+                paymentDocs,
+              );
 
-        // IMPORTANT:
-        // Use the actual available Dashboard width.
-        final width = constraints.maxWidth;
+              if (paymentStatus == 'paid') {
+                paidStudents++;
+              } else if (paymentStatus == 'pending') {
+                pendingStudents++;
+              } else {
+                notPaidStudents++;
+              }
+            }
 
-        int columns;
+            final totalStudents = studentDocs.length;
 
-        if (width >= 1200) {
-          columns = 5;
-        } else if (width >= 900) {
-          columns = 3;
-        } else if (width >= 600) {
-          columns = 2;
-        } else {
-          columns = 1;
-        }
+            // "Pending Fees" means every student who has not completed
+            // the current month's payment: Pending + Not Paid.
+            final pendingFees = pendingStudents + notPaidStudents;
 
-        final cards = [
-          _buildStatCard(
-            title: 'Total Students',
-            value: totalStudents.toString(),
-            color: primaryColor,
-            icon: Icons.people_alt_outlined,
-          ),
-          _buildStatCard(
-            title: 'Active Students',
-            value: activeStudents.toString(),
-            color: successColor,
-            icon: Icons.check_circle_outline,
-          ),
-          _buildStatCard(
-            title: 'Inactive Students',
-            value: inactiveStudents.toString(),
-            color: errorColor,
-            icon: Icons.cancel_outlined,
-          ),
-          _buildStatCard(
-            title: 'Paid Students',
-            value: paidStudents.toString(),
-            color: secondaryColor,
-            icon: Icons.payment_outlined,
-          ),
-          _buildStatCard(
-            title: 'Pending Fees',
-            value: pendingFees.toString(),
-            color: warningColor,
-            icon: Icons.pending_outlined,
-          ),
-        ];
+            final width = constraints.maxWidth;
 
-        // --------------------------------------------------------
-        // VERY SMALL WIDTH
-        // --------------------------------------------------------
+            int columns;
 
-        if (columns == 1) {
-          return Column(
-            children: [
-              for (int i = 0; i < cards.length; i++) ...[
-                SizedBox(width: double.infinity, child: cards[i]),
-                if (i != cards.length - 1) const SizedBox(height: 12),
-              ],
-            ],
-          );
-        }
+            if (width >= 1200) {
+              columns = 5;
+            } else if (width >= 900) {
+              columns = 3;
+            } else if (width >= 600) {
+              columns = 2;
+            } else {
+              columns = 1;
+            }
 
-        // --------------------------------------------------------
-        // NORMAL DESKTOP/TABLET
-        // --------------------------------------------------------
+            final cards = [
+              _buildStatCard(
+                title: 'Total Students',
+                value: totalStudents.toString(),
+                color: primaryColor,
+                icon: Icons.people_alt_outlined,
+              ),
+              _buildStatCard(
+                title: 'Active Students',
+                value: activeStudents.toString(),
+                color: successColor,
+                icon: Icons.check_circle_outline,
+              ),
+              _buildStatCard(
+                title: 'Inactive Students',
+                value: inactiveStudents.toString(),
+                color: errorColor,
+                icon: Icons.cancel_outlined,
+              ),
+              _buildStatCard(
+                title: 'Paid Students',
+                value: paidStudents.toString(),
+                color: secondaryColor,
+                icon: Icons.payment_outlined,
+              ),
+              _buildStatCard(
+                title: 'Pending Fees',
+                value: pendingFees.toString(),
+                color: warningColor,
+                icon: Icons.pending_outlined,
+              ),
+            ];
 
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+            if (columns == 1) {
+              return Column(
+                children: [
+                  for (int i = 0; i < cards.length; i++) ...[
+                    SizedBox(width: double.infinity, child: cards[i]),
+                    if (i != cards.length - 1) const SizedBox(height: 12),
+                  ],
+                ],
+              );
+            }
 
-          itemCount: cards.length,
-
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 14,
-
-            // Fixed minimum card height.
-            // This prevents Bottom Overflow.
-            mainAxisExtent: 112,
-          ),
-
-          itemBuilder: (context, index) {
-            return cards[index];
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: cards.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                mainAxisExtent: 112,
+              ),
+              itemBuilder: (context, index) {
+                return cards[index];
+              },
+            );
           },
         );
       },
@@ -453,12 +466,9 @@ class DashboardScreen extends StatelessWidget {
         const SizedBox(height: 12),
 
         StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('feePayments')
-              .snapshots(),
-
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+          stream: FirebaseFirestore.instance.collection('user').snapshots(),
+          builder: (context, userSnapshot) {
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
               return const ContainerCard(
                 child: Padding(
                   padding: EdgeInsets.all(20),
@@ -469,80 +479,98 @@ class DashboardScreen extends StatelessWidget {
               );
             }
 
-            if (snapshot.hasError) {
-              return _buildErrorCard('Unable to load payment information.');
+            if (userSnapshot.hasError) {
+              return _buildErrorCard('Unable to load student information.');
             }
 
-            final paymentDocs = snapshot.data?.docs ?? [];
-
-            int totalPaidPayments = 0;
-
-            for (final doc in paymentDocs) {
-              final data = doc.data() as Map<String, dynamic>;
-
-              if (data['status'] == 'Paid') {
-                totalPaidPayments++;
-              }
-            }
-
-            final totalPendingPayments = paymentDocs.length - totalPaidPayments;
-
-            final bool isSmall = constraints.maxWidth < 600;
-
-            return ContainerCard(
-              child: isSmall
-                  ? Column(
-                      children: [
-                        _buildPaymentMetric(
-                          'Total Recorded Payments',
-                          paymentDocs.length.toString(),
-                          Colors.white,
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        _buildPaymentMetric(
-                          'Paid Transactions',
-                          totalPaidPayments.toString(),
-                          successColor,
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        _buildPaymentMetric(
-                          'Pending Transactions',
-                          totalPendingPayments.toString(),
-                          warningColor,
-                        ),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        Expanded(
-                          child: _buildPaymentMetric(
-                            'Total Recorded Payments',
-                            paymentDocs.length.toString(),
-                            Colors.white,
-                          ),
-                        ),
-
-                        Expanded(
-                          child: _buildPaymentMetric(
-                            'Paid Transactions',
-                            totalPaidPayments.toString(),
-                            successColor,
-                          ),
-                        ),
-
-                        Expanded(
-                          child: _buildPaymentMetric(
-                            'Pending Transactions',
-                            totalPendingPayments.toString(),
-                            warningColor,
-                          ),
-                        ),
-                      ],
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('feePayments')
+                  .snapshots(),
+              builder: (context, paymentSnapshot) {
+                if (paymentSnapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const ContainerCard(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Center(
+                        child: CircularProgressIndicator(color: primaryColor),
+                      ),
                     ),
+                  );
+                }
+
+                if (paymentSnapshot.hasError) {
+                  return _buildErrorCard('Unable to load payment information.');
+                }
+
+                final studentDocs = userSnapshot.data?.docs ?? [];
+                final paymentDocs = paymentSnapshot.data?.docs ?? [];
+
+                int paidCount = 0;
+                int pendingCount = 0;
+                int notPaidCount = 0;
+
+                for (final studentDoc in studentDocs) {
+                  final status = _getCurrentPaymentStatus(
+                    studentDoc,
+                    paymentDocs,
+                  );
+
+                  if (status == 'paid') {
+                    paidCount++;
+                  } else if (status == 'pending') {
+                    pendingCount++;
+                  } else {
+                    notPaidCount++;
+                  }
+                }
+
+                final totalStudents = studentDocs.length;
+                final bool isSmall = constraints.maxWidth < 600;
+
+                final metrics = [
+                  _buildPaymentMetric(
+                    'Total Students',
+                    totalStudents.toString(),
+                    Colors.white,
+                  ),
+                  _buildPaymentMetric(
+                    'Paid Students',
+                    paidCount.toString(),
+                    successColor,
+                  ),
+                  _buildPaymentMetric(
+                    'Pending Students',
+                    pendingCount.toString(),
+                    warningColor,
+                  ),
+                  _buildPaymentMetric(
+                    'Not Paid',
+                    notPaidCount.toString(),
+                    errorColor,
+                  ),
+                ];
+
+                return ContainerCard(
+                  child: isSmall
+                      ? Column(
+                          children: [
+                            for (int i = 0; i < metrics.length; i++) ...[
+                              metrics[i],
+                              if (i != metrics.length - 1)
+                                const SizedBox(height: 20),
+                            ],
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            for (final metric in metrics)
+                              Expanded(child: metric),
+                          ],
+                        ),
+                );
+              },
             );
           },
         ),
@@ -636,18 +664,45 @@ class DashboardScreen extends StatelessWidget {
               );
             }
 
-            return ContainerCard(
-              child: Column(
-                children: [
-                  for (int i = 0; i < studentDocs.length; i++)
-                    _buildStudentItem(
-                      context,
-                      studentDocs[i].data() as Map<String, dynamic>,
-                      constraints,
-                      i == studentDocs.length - 1,
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('feePayments')
+                  .snapshots(),
+              builder: (context, paymentSnapshot) {
+                if (paymentSnapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(30),
+                    child: Center(
+                      child: CircularProgressIndicator(color: primaryColor),
                     ),
-                ],
-              ),
+                  );
+                }
+
+                if (paymentSnapshot.hasError) {
+                  return _buildErrorCard('Unable to load payment information.');
+                }
+
+                final paymentDocs = paymentSnapshot.data?.docs ?? [];
+
+                return ContainerCard(
+                  child: Column(
+                    children: [
+                      for (int i = 0; i < studentDocs.length; i++)
+                        _buildStudentItem(
+                          context,
+                          studentDocs[i].data() as Map<String, dynamic>,
+                          constraints,
+                          i == studentDocs.length - 1,
+                          currentPaymentStatus: _getCurrentPaymentStatus(
+                            studentDocs[i],
+                            paymentDocs,
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
             );
           },
         ),
@@ -663,8 +718,9 @@ class DashboardScreen extends StatelessWidget {
     BuildContext context,
     Map<String, dynamic> data,
     BoxConstraints constraints,
-    bool isLast,
-  ) {
+    bool isLast, {
+    String? currentPaymentStatus,
+  }) {
     final firstName = data['firstName']?.toString() ?? '';
 
     final lastName = data['lastName']?.toString() ?? '';
@@ -673,7 +729,7 @@ class DashboardScreen extends StatelessWidget {
 
     final course = data['course']?.toString() ?? 'General';
 
-    final feeStatus = data['feeStatus']?.toString() ?? 'Pending';
+    final feeStatus = currentPaymentStatus ?? 'notPaid';
 
     final accountStatus = data['accountStatus']?.toString() ?? 'Inactive';
 
@@ -682,6 +738,10 @@ class DashboardScreen extends StatelessWidget {
     final bool isSmall = constraints.maxWidth < 650;
 
     final fullName = '$firstName $lastName'.trim();
+
+    final feeStatusText = _paymentStatusLabel(feeStatus);
+
+    final feeStatusColor = _paymentStatusColor(feeStatus);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -741,16 +801,15 @@ class DashboardScreen extends StatelessWidget {
               if (!isSmall) ...[
                 const SizedBox(width: 8),
 
-                _buildStatusChip(
-                  feeStatus,
-                  feeStatus == 'Paid' ? successColor : errorColor,
-                ),
+                _buildStatusChip(feeStatusText, feeStatusColor),
 
                 const SizedBox(width: 8),
 
                 _buildStatusChip(
                   accountStatus,
-                  accountStatus == 'Active' ? successColor : Colors.grey,
+                  accountStatus.toLowerCase() == 'active'
+                      ? successColor
+                      : Colors.grey,
                 ),
               ],
             ],
@@ -763,14 +822,13 @@ class DashboardScreen extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildStatusChip(
-                  feeStatus,
-                  feeStatus == 'Paid' ? successColor : errorColor,
-                ),
+                _buildStatusChip(feeStatusText, feeStatusColor),
 
                 _buildStatusChip(
                   accountStatus,
-                  accountStatus == 'Active' ? successColor : Colors.grey,
+                  accountStatus.toLowerCase() == 'active'
+                      ? successColor
+                      : Colors.grey,
                 ),
               ],
             ),
@@ -783,6 +841,166 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  // ============================================================
+  // CURRENT-MONTH PAYMENT STATUS
+  // ============================================================
+
+  String _getCurrentPaymentStatus(
+    QueryDocumentSnapshot studentDoc,
+    List<QueryDocumentSnapshot> paymentDocs,
+  ) {
+    final studentData = studentDoc.data() as Map<String, dynamic>;
+
+    final studentId = studentData['studentId']?.toString().trim() ?? '';
+    final uid = studentData['uid']?.toString().trim() ?? '';
+    final documentId = studentDoc.id.trim();
+
+    final now = DateTime.now();
+    final currentYear = now.year;
+    final currentMonth = now.month;
+
+    for (final paymentDoc in paymentDocs) {
+      final paymentData = paymentDoc.data() as Map<String, dynamic>;
+
+      if (!_isPaymentForMonth(paymentData, currentYear, currentMonth)) {
+        continue;
+      }
+
+      final paymentStudentId =
+          paymentData['studentId']?.toString().trim() ?? '';
+      final paymentUid = paymentData['uid']?.toString().trim() ?? '';
+
+      final sameStudent =
+          (studentId.isNotEmpty && paymentStudentId == studentId) ||
+          (uid.isNotEmpty && paymentUid == uid) ||
+          (documentId.isNotEmpty && paymentUid == documentId) ||
+          (studentId.isNotEmpty && paymentUid == studentId) ||
+          (documentId.isNotEmpty && paymentStudentId == documentId);
+
+      if (sameStudent) {
+        return _normalizePaymentStatus(
+          paymentData['status'] ?? paymentData['paymentStatus'],
+        );
+      }
+    }
+
+    // A student with no current-month payment record is NOT PAID.
+    return 'notPaid';
+  }
+
+  bool _isPaymentForMonth(Map<String, dynamic> data, int year, int month) {
+    final paymentYear = _parseInt(data['paymentYear']);
+
+    if (paymentYear != null && paymentYear != year) {
+      return false;
+    }
+
+    final rawMonth = data['paymentMonth'];
+
+    if (rawMonth != null && rawMonth.toString().trim().isNotEmpty) {
+      final monthText = rawMonth.toString().trim().toLowerCase();
+
+      final monthNumber = int.tryParse(monthText);
+
+      if (monthNumber != null) {
+        return monthNumber == month;
+      }
+
+      const monthNames = [
+        'january',
+        'february',
+        'march',
+        'april',
+        'may',
+        'june',
+        'july',
+        'august',
+        'september',
+        'october',
+        'november',
+        'december',
+      ];
+
+      if (monthNames[month - 1] != monthText) {
+        return false;
+      }
+
+      return true;
+    }
+
+    // Fallback for payment documents that only contain paymentDate.
+    final paymentDate = _readDateTime(data['paymentDate']);
+
+    if (paymentDate != null) {
+      return paymentDate.year == year && paymentDate.month == month;
+    }
+
+    return false;
+  }
+
+  String _normalizePaymentStatus(dynamic value) {
+    final status = value?.toString().trim().toLowerCase() ?? '';
+
+    switch (status) {
+      case 'paid':
+        return 'paid';
+
+      case 'pending':
+        return 'pending';
+
+      case 'not paid':
+      case 'notpaid':
+      case 'not_paid':
+      case 'unpaid':
+        return 'notPaid';
+
+      default:
+        return 'notPaid';
+    }
+  }
+
+  String _paymentStatusLabel(String status) {
+    switch (status) {
+      case 'paid':
+        return 'Paid';
+      case 'pending':
+        return 'Pending';
+      default:
+        return 'Not Paid';
+    }
+  }
+
+  Color _paymentStatusColor(String status) {
+    switch (status) {
+      case 'paid':
+        return successColor;
+      case 'pending':
+        return warningColor;
+      default:
+        return errorColor;
+    }
+  }
+
+  int? _parseInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  DateTime? _readDateTime(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    return null;
   }
 
   // ============================================================
