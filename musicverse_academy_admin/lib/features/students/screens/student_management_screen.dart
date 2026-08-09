@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'dart:math';
@@ -23,6 +24,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   final FocusNode _searchFocusNode = FocusNode();
 
   final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>('');
+  Timer? _searchDebounce;
   String _selectedAccountStatus = 'All';
   String _selectedFeeStatus = 'All';
   String _selectedCourse = 'All';
@@ -53,6 +55,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _searchQueryNotifier.dispose();
@@ -325,12 +328,27 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                 style: const TextStyle(color: Colors.white),
 
                                 onChanged: (value) {
-                                  // Update only the search results.
-                                  // Do not call setState() here because that
-                                  // rebuilds the entire screen on every
-                                  // character typed (for example: "s" -> "i").
-                                  _searchQueryNotifier.value = value
+                                  // Smooth live search:
+                                  // - keep the TextField mounted
+                                  // - keep keyboard/cursor focus
+                                  // - avoid unnecessary rapid rebuilds
+                                  // - update only the filtered student list
+                                  _searchDebounce?.cancel();
+
+                                  final String query = value
+                                      .trim()
                                       .toLowerCase();
+
+                                  _searchDebounce = Timer(
+                                    const Duration(milliseconds: 180),
+                                    () {
+                                      if (!mounted) {
+                                        return;
+                                      }
+
+                                      _searchQueryNotifier.value = query;
+                                    },
+                                  );
                                 },
 
                                 decoration: InputDecoration(
