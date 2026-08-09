@@ -19,6 +19,9 @@ class StudentManagementScreen extends StatefulWidget {
 class _StudentManagementScreenState extends State<StudentManagementScreen> {
   final TextEditingController _searchController = TextEditingController();
 
+  // Keeps the search field focused while the student list rebuilds.
+  final FocusNode _searchFocusNode = FocusNode();
+
   String _searchQuery = '';
   String _selectedAccountStatus = 'All';
   String _selectedFeeStatus = 'All';
@@ -51,6 +54,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -306,12 +310,21 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                           child: TextField(
                             controller: _searchController,
+                            focusNode: _searchFocusNode,
 
                             style: const TextStyle(color: Colors.white),
 
                             onChanged: (value) {
                               setState(() {
                                 _searchQuery = value.trim().toLowerCase();
+                              });
+
+                              // Keep the search field focused after the
+                              // student list rebuilds.
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted && !_searchFocusNode.hasFocus) {
+                                  _searchFocusNode.requestFocus();
+                                }
                               });
                             },
 
@@ -332,6 +345,19 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide.none,
+                              ),
+
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
+
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: primaryColor,
+                                  width: 1.5,
+                                ),
                               ),
                             ),
                           ),
