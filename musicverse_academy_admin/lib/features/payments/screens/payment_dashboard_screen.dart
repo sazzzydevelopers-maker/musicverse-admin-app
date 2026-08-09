@@ -26,6 +26,9 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
   String _searchQuery = '';
   String _selectedStatusFilter = 'All';
 
+  // Added: prevents duplicate current-month fee records while the live streams refresh.
+  bool _isSyncingCurrentMonthPayments = false;
+
   // Theme Constants matching MusicVerse Academy
   static const Color bgColor = Color(0xFF0D1020);
   static const Color cardColor = Color(0xFF171C35);
@@ -148,7 +151,14 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
             );
           }
 
-          final students = userSnapshot.data?.docs ?? [];
+          final students = (userSnapshot.data?.docs ?? []).where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final role = (data['role'] ?? 'student')
+                .toString()
+                .trim()
+                .toLowerCase();
+            return role.isEmpty || role == 'student';
+          }).toList();
 
           return StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -173,11 +183,32 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
               final paymentDocs = paymentSnapshot.data?.docs ?? [];
               final Map<String, Map<String, dynamic>> currentPayments = {};
 
+              // Added: keep feePayments complete for the current month.
+              // Missing current-month records are created automatically as Not Paid.
+              _scheduleCurrentMonthPaymentSync(students, paymentDocs);
+
+              double totalRevenue = 0;
               for (final doc in paymentDocs) {
                 final data = doc.data() as Map<String, dynamic>;
-                final uid = (data['uid'] ?? '').toString();
+                final status = (data['status'] ?? '')
+                    .toString()
+                    .trim()
+                    .toLowerCase();
 
-                if (uid.isEmpty) continue;
+                if (status == 'paid') {
+                  final amount = data['amountPaid'] is num
+                      ? (data['amountPaid'] as num).toDouble()
+                      : data['monthlyFee'] is num
+                      ? (data['monthlyFee'] as num).toDouble()
+                      : 0.0;
+                  totalRevenue += amount;
+                }
+              }
+
+              for (final doc in paymentDocs) {
+                final data = doc.data() as Map<String, dynamic>;
+                final uid = (data['uid'] ?? '').toString().trim();
+                final studentId = (data['studentId'] ?? '').toString().trim();
 
                 final paymentDate = _timestampToDate(data['paymentDate']);
                 final month = (data['paymentMonth'] ?? '')
@@ -196,14 +227,29 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                     year == _selectedMonth.year.toString();
 
                 if (matchesDate || matchesFields) {
-                  currentPayments[uid] = {...data, 'docId': doc.id};
+                  final paymentWithId = {...data, 'docId': doc.id};
+
+                  // Support both uid and studentId so older feePayment
+                  // documents are still linked correctly.
+                  if (uid.isNotEmpty) {
+                    currentPayments[uid] = paymentWithId;
+                  }
+                  if (studentId.isNotEmpty) {
+                    currentPayments[studentId] = paymentWithId;
+                  }
                 }
               }
 
               double monthlyIncome = 0;
               int paidCount = 0;
               int pendingCount = 0;
+              int pendingStatusCount = 0;
+              int notPaidCount = 0;
+              int overdueCount = 0;
               double pendingAmount = 0;
+
+              // Added: total expected fees for every student in the selected month.
+              double totalFees = 0;
 
               final List<Map<String, dynamic>> filteredList = [];
 
@@ -211,8 +257,13 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                 final student = studentDoc.data() as Map<String, dynamic>;
 
                 final uid = (student['uid'] ?? studentDoc.id).toString();
+                final studentId = _getStudentId(student);
 
-                final payment = currentPayments[uid];
+                final payment =
+                    currentPayments[uid] ??
+                    (studentId == 'Not assigned'
+                        ? null
+                        : currentPayments[studentId]);
 
                 final paid = _isPaidForSelectedMonth(payment);
                 final overdue = _isOverdue(student, payment);
@@ -223,14 +274,32 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                     ? (student['monthlyFee'] as num).toDouble()
                     : 0.0;
 
+                // Added: every active student contributes their expected
+                // monthly fee to Total Fees for the selected month.
+                totalFees += fee;
+
                 if (paid) {
                   monthlyIncome += payment?['amountPaid'] is num
                       ? (payment?['amountPaid'] as num).toDouble()
                       : fee;
                   paidCount++;
                 } else {
+                  // Pending Fees remains the total number of unpaid students.
                   pendingCount++;
                   pendingAmount += fee;
+
+                  final storedStatus = (payment?['status'] ?? '')
+                      .toString()
+                      .trim()
+                      .toLowerCase();
+
+                  if (overdue || storedStatus == 'overdue') {
+                    overdueCount++;
+                  } else if (storedStatus == 'pending') {
+                    pendingStatusCount++;
+                  } else {
+                    notPaidCount++;
+                  }
                 }
 
                 final firstName = (student['firstName'] ?? '').toString();
@@ -358,122 +427,30 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                           ),
                         ],
                       ),
+
+                      // Added financial summary cards.
+                      // The original KPI cards above are unchanged.
+                      const SizedBox(height: 16),
+                      _buildFinancialSummarySection(
+                        totalRevenue: totalRevenue,
+                        totalFees: totalFees,
+                        outstandingFees: pendingAmount,
+                      ),
                       const SizedBox(height: 28),
 
                       // Existing revenue chart preserved.
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: cardColor,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Revenue Trend",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              "Monthly income performance overview",
-                              style: TextStyle(
-                                color: textSecondary,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            SizedBox(
-                              height: 220,
-                              child: LineChart(
-                                LineChartData(
-                                  gridData: const FlGridData(show: false),
-                                  titlesData: FlTitlesData(
-                                    leftTitles: const AxisTitles(
-                                      sideTitles: SideTitles(showTitles: false),
-                                    ),
-                                    topTitles: const AxisTitles(
-                                      sideTitles: SideTitles(showTitles: false),
-                                    ),
-                                    rightTitles: const AxisTitles(
-                                      sideTitles: SideTitles(showTitles: false),
-                                    ),
-                                    bottomTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        getTitlesWidget: (val, meta) {
-                                          const months = [
-                                            'Jan',
-                                            'Feb',
-                                            'Mar',
-                                            'Apr',
-                                            'May',
-                                            'Jun',
-                                            'Jul',
-                                            'Aug',
-                                            'Sep',
-                                            'Oct',
-                                            'Nov',
-                                            'Dec',
-                                          ];
 
-                                          final index = val.toInt() - 1;
-
-                                          if (index >= 0 &&
-                                              index < months.length) {
-                                            return Text(
-                                              months[index],
-                                              style: const TextStyle(
-                                                color: textSecondary,
-                                                fontSize: 11,
-                                              ),
-                                            );
-                                          }
-
-                                          return const Text('');
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                  borderData: FlBorderData(show: false),
-                                  lineBarsData: [
-                                    LineChartBarData(
-                                      spots: [
-                                        const FlSpot(1, 25000),
-                                        const FlSpot(2, 32000),
-                                        const FlSpot(3, 38000),
-                                        const FlSpot(4, 41000),
-                                        const FlSpot(5, 35000),
-                                        const FlSpot(6, 44000),
-                                        const FlSpot(7, 48000),
-                                        FlSpot(
-                                          _selectedMonth.month.toDouble(),
-                                          monthlyIncome > 0
-                                              ? monthlyIncome
-                                              : 52000,
-                                        ),
-                                      ],
-                                      isCurved: true,
-                                      color: primaryColor,
-                                      barWidth: 3,
-                                      dotData: const FlDotData(show: true),
-                                      belowBarData: BarAreaData(
-                                        show: true,
-                                        color: primaryColor.withValues(
-                                          alpha: 0.15,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      // Added dynamic payment analytics. These are separate
+                      // from the existing Revenue Trend chart above.
+                      _buildPaymentAnalytics(
+                        paymentDocs: paymentDocs,
+                        paidCount: paidCount,
+                        pendingCount: pendingStatusCount,
+                        notPaidCount: notPaidCount,
+                        overdueCount: overdueCount,
+                        monthlyIncome: monthlyIncome,
+                        totalFees: totalFees,
+                        outstandingFees: pendingAmount,
                       ),
                       const SizedBox(height: 28),
 
@@ -2777,6 +2754,849 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
             });
           },
         ),
+      ),
+    );
+  }
+
+  void _scheduleCurrentMonthPaymentSync(
+    List<QueryDocumentSnapshot> students,
+    List<QueryDocumentSnapshot> paymentDocs,
+  ) {
+    final now = DateTime.now();
+    final isCurrentMonth =
+        _selectedMonth.year == now.year && _selectedMonth.month == now.month;
+
+    // Only create records for the real current month. Selecting an old month
+    // should never silently create historical payment documents.
+    if (!isCurrentMonth || _isSyncingCurrentMonthPayments || !mounted) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isSyncingCurrentMonthPayments) return;
+      _ensureCurrentMonthPaymentRecords(students, paymentDocs);
+    });
+  }
+
+  Future<void> _ensureCurrentMonthPaymentRecords(
+    List<QueryDocumentSnapshot> students,
+    List<QueryDocumentSnapshot> paymentDocs,
+  ) async {
+    if (_isSyncingCurrentMonthPayments || !mounted) return;
+
+    final now = DateTime.now();
+    final monthName = _getMonthName(now.month).toLowerCase();
+
+    _isSyncingCurrentMonthPayments = true;
+
+    try {
+      final existingKeys = <String>{};
+
+      for (final doc in paymentDocs) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        final paymentMonth = (data['paymentMonth'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        final paymentYear = int.tryParse(
+          (data['paymentYear'] ?? '').toString(),
+        );
+
+        if (paymentMonth != monthName || paymentYear != now.year) {
+          continue;
+        }
+
+        final uid = (data['uid'] ?? '').toString().trim();
+        final studentId = (data['studentId'] ?? '').toString().trim();
+
+        if (uid.isNotEmpty) {
+          existingKeys.add('uid:$uid');
+        }
+        if (studentId.isNotEmpty) {
+          existingKeys.add('student:$studentId');
+        }
+      }
+
+      for (final studentDoc in students) {
+        final student = studentDoc.data() as Map<String, dynamic>;
+
+        final uid = (student['uid'] ?? studentDoc.id).toString().trim();
+        final studentId = _getStudentId(student);
+
+        final hasUidRecord =
+            uid.isNotEmpty && existingKeys.contains('uid:$uid');
+        final hasStudentIdRecord =
+            studentId != 'Not assigned' &&
+            existingKeys.contains('student:$studentId');
+
+        if (hasUidRecord || hasStudentIdRecord) {
+          continue;
+        }
+
+        final monthlyFee = student['monthlyFee'] is num
+            ? (student['monthlyFee'] as num).toDouble()
+            : 0.0;
+
+        final studentName = _studentDisplayName(student);
+        final safeKey = _safePaymentDocumentKey(
+          uid.isNotEmpty ? uid : studentId,
+        );
+
+        if (safeKey.isEmpty) continue;
+
+        // Deterministic ID prevents duplicate current-month records if the
+        // dashboard is opened from more than one browser/device.
+        final paymentDocId =
+            '${safeKey}_${now.year}_${now.month.toString().padLeft(2, '0')}';
+
+        final paymentRef = FirebaseFirestore.instance
+            .collection('feePayments')
+            .doc(paymentDocId);
+
+        final existing = await paymentRef.get();
+
+        if (existing.exists) {
+          existingKeys.add('uid:$uid');
+          if (studentId != 'Not assigned') {
+            existingKeys.add('student:$studentId');
+          }
+          continue;
+        }
+
+        final nextDueDate = DateTime(now.year, now.month + 1, 1);
+
+        await paymentRef.set({
+          'uid': uid,
+          'studentId': studentId == 'Not assigned' ? '' : studentId,
+          'studentName': studentName,
+          'monthlyFee': monthlyFee,
+          'amountPaid': 0,
+          'status': 'Not Paid',
+          'paymentMonth': monthName,
+          'paymentYear': now.year,
+          'nextDueDate': Timestamp.fromDate(nextDueDate),
+          'joinDate': student['joinDate'] ?? FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'statusChangedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: false));
+
+        existingKeys.add('uid:$uid');
+        if (studentId != 'Not assigned') {
+          existingKeys.add('student:$studentId');
+        }
+      }
+    } catch (_) {
+      // The live fee stream remains usable even if record creation fails.
+      // The next refresh/stream rebuild will retry the missing records.
+    } finally {
+      _isSyncingCurrentMonthPayments = false;
+    }
+  }
+
+  String _studentDisplayName(Map<String, dynamic> student) {
+    final directName = (student['studentName'] ?? '').toString().trim();
+
+    if (directName.isNotEmpty) {
+      return directName;
+    }
+
+    final firstName = (student['firstName'] ?? '').toString().trim();
+    final lastName = (student['lastName'] ?? '').toString().trim();
+    final fullName = '$firstName $lastName'.trim();
+
+    return fullName.isEmpty ? 'Unknown Student' : fullName;
+  }
+
+  String _safePaymentDocumentKey(String value) {
+    return value
+        .trim()
+        .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+  }
+
+  Widget _buildPaymentAnalytics({
+    required List<QueryDocumentSnapshot> paymentDocs,
+    required int paidCount,
+    required int pendingCount,
+    required int notPaidCount,
+    required int overdueCount,
+    required double monthlyIncome,
+    required double totalFees,
+    required double outstandingFees,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final twoColumns = width > 1050;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Payment Analytics',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Live collection status for ${_getMonthName(_selectedMonth.month)} '
+              '${_selectedMonth.year}.',
+              style: const TextStyle(color: textSecondary, fontSize: 12.5),
+            ),
+            const SizedBox(height: 14),
+            if (twoColumns)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _buildPaymentStatusGraph(
+                      paidCount: paidCount,
+                      pendingCount: pendingCount,
+                      notPaidCount: notPaidCount,
+                      overdueCount: overdueCount,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildFeeCollectionGraph(
+                      monthlyIncome: monthlyIncome,
+                      totalFees: totalFees,
+                      outstandingFees: outstandingFees,
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              _buildPaymentStatusGraph(
+                paidCount: paidCount,
+                pendingCount: pendingCount,
+                notPaidCount: notPaidCount,
+                overdueCount: overdueCount,
+              ),
+              const SizedBox(height: 16),
+              _buildFeeCollectionGraph(
+                monthlyIncome: monthlyIncome,
+                totalFees: totalFees,
+                outstandingFees: outstandingFees,
+              ),
+            ],
+            const SizedBox(height: 16),
+            _buildYearlyRevenueGraph(paymentDocs),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildAnalyticsCard({
+    required String title,
+    required String subtitle,
+    required Widget child,
+    required IconData icon,
+    required Color accent,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 17, 18, 18),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.055),
+            blurRadius: 22,
+            spreadRadius: 1,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: accent.withValues(alpha: 0.22)),
+                ),
+                child: Icon(icon, color: accent, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentStatusGraph({
+    required int paidCount,
+    required int pendingCount,
+    required int notPaidCount,
+    required int overdueCount,
+  }) {
+    final total = paidCount + pendingCount + notPaidCount + overdueCount;
+
+    return _buildAnalyticsCard(
+      title: 'Payment Status',
+      subtitle: '$total students • current month',
+      icon: Icons.donut_small_rounded,
+      accent: primaryColor,
+      child: SizedBox(
+        height: 245,
+        child: Row(
+          children: [
+            Expanded(
+              flex: 6,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  PieChart(
+                    PieChartData(
+                      centerSpaceRadius: 52,
+                      sectionsSpace: 3,
+                      startDegreeOffset: -90,
+                      sections: [
+                        _paymentPieSection(paidCount.toDouble(), successColor),
+                        _paymentPieSection(
+                          pendingCount.toDouble(),
+                          warningColor,
+                        ),
+                        _paymentPieSection(notPaidCount.toDouble(), errorColor),
+                        if (overdueCount > 0)
+                          _paymentPieSection(
+                            overdueCount.toDouble(),
+                            secondaryColor,
+                          ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$paidCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Text(
+                        'Paid',
+                        style: TextStyle(color: textSecondary, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 4,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _statusLegendRow('Paid', paidCount, successColor),
+                  const SizedBox(height: 11),
+                  _statusLegendRow('Pending', pendingCount, warningColor),
+                  const SizedBox(height: 11),
+                  _statusLegendRow('Not Paid', notPaidCount, errorColor),
+                  if (overdueCount > 0) ...[
+                    const SizedBox(height: 11),
+                    _statusLegendRow('Overdue', overdueCount, secondaryColor),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PieChartSectionData _paymentPieSection(double value, Color color) {
+    return PieChartSectionData(
+      value: value <= 0 ? 0.0001 : value,
+      color: color,
+      radius: 29,
+      showTitle: false,
+    );
+  }
+
+  Widget _statusLegendRow(String label, int count, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Text(
+          '$count',
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeeCollectionGraph({
+    required double monthlyIncome,
+    required double totalFees,
+    required double outstandingFees,
+  }) {
+    final maxValue = [
+      monthlyIncome,
+      totalFees,
+      outstandingFees,
+    ].reduce((a, b) => a > b ? a : b);
+    final chartMax = maxValue <= 0 ? 1000.0 : maxValue * 1.25;
+
+    return _buildAnalyticsCard(
+      title: 'Fee Collection',
+      subtitle: 'Collected vs expected vs outstanding',
+      icon: Icons.account_balance_rounded,
+      accent: successColor,
+      child: SizedBox(
+        height: 245,
+        child: BarChart(
+          BarChartData(
+            maxY: chartMax,
+            minY: 0,
+            alignment: BarChartAlignment.spaceAround,
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              horizontalInterval: chartMax / 4,
+              getDrawingHorizontalLine: (_) =>
+                  const FlLine(color: Colors.white10, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            titlesData: FlTitlesData(
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 38,
+                  getTitlesWidget: (value, meta) {
+                    const labels = ['Collected', 'Total Fees', 'Outstanding'];
+                    final index = value.toInt();
+
+                    if (index < 0 || index >= labels.length) {
+                      return const SizedBox.shrink();
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 9),
+                      child: Text(
+                        labels[index],
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: textSecondary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            barGroups: [
+              _feeBarGroup(0, monthlyIncome, successColor),
+              _feeBarGroup(1, totalFees, primaryColor),
+              _feeBarGroup(2, outstandingFees, warningColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  BarChartGroupData _feeBarGroup(int x, double value, Color color) {
+    return BarChartGroupData(
+      x: x,
+      barsSpace: 0,
+      barRods: [
+        BarChartRodData(
+          toY: value,
+          width: 34,
+          color: color,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
+          backDrawRodData: BackgroundBarChartRodData(
+            show: true,
+            toY: value <= 0 ? 1 : value,
+            color: Colors.white.withValues(alpha: 0.025),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildYearlyRevenueGraph(List<QueryDocumentSnapshot> paymentDocs) {
+    final year = _selectedMonth.year;
+    final monthlyRevenue = List<double>.filled(12, 0);
+
+    for (final doc in paymentDocs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final status = (data['status'] ?? '').toString().trim().toLowerCase();
+
+      if (status != 'paid') continue;
+
+      final paymentYear = int.tryParse((data['paymentYear'] ?? '').toString());
+
+      if (paymentYear != year) continue;
+
+      int? monthNumber;
+      final paymentMonth = (data['paymentMonth'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+
+      if (paymentMonth.isNotEmpty) {
+        const monthNames = [
+          'january',
+          'february',
+          'march',
+          'april',
+          'may',
+          'june',
+          'july',
+          'august',
+          'september',
+          'october',
+          'november',
+          'december',
+        ];
+
+        final index = monthNames.indexOf(paymentMonth);
+        if (index >= 0) {
+          monthNumber = index + 1;
+        }
+      }
+
+      monthNumber ??= _timestampToDate(data['paymentDate'])?.month;
+
+      if (monthNumber == null || monthNumber < 1 || monthNumber > 12) {
+        continue;
+      }
+
+      final amount = data['amountPaid'] is num
+          ? (data['amountPaid'] as num).toDouble()
+          : data['monthlyFee'] is num
+          ? (data['monthlyFee'] as num).toDouble()
+          : 0.0;
+
+      monthlyRevenue[monthNumber - 1] += amount;
+    }
+
+    var maxRevenue = 0.0;
+    for (final value in monthlyRevenue) {
+      if (value > maxRevenue) maxRevenue = value;
+    }
+
+    final maxY = maxRevenue <= 0 ? 1000.0 : maxRevenue * 1.25;
+
+    const monthLabels = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return _buildAnalyticsCard(
+      title: 'Yearly Revenue',
+      subtitle: 'Actual Paid revenue • $year',
+      icon: Icons.show_chart_rounded,
+      accent: secondaryColor,
+      child: SizedBox(
+        height: 255,
+        child: LineChart(
+          LineChartData(
+            minY: 0,
+            maxY: maxY,
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              horizontalInterval: maxY / 4,
+              getDrawingHorizontalLine: (_) =>
+                  const FlLine(color: Colors.white10, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            titlesData: FlTitlesData(
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 28,
+                  getTitlesWidget: (value, meta) {
+                    final index = value.toInt() - 1;
+
+                    if (index < 0 || index >= monthLabels.length) {
+                      return const SizedBox.shrink();
+                    }
+
+                    return Text(
+                      monthLabels[index],
+                      style: const TextStyle(
+                        color: textSecondary,
+                        fontSize: 10,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            lineBarsData: [
+              LineChartBarData(
+                spots: List.generate(
+                  12,
+                  (index) => FlSpot(index + 1.0, monthlyRevenue[index]),
+                ),
+                isCurved: true,
+                color: secondaryColor,
+                barWidth: 3,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (spot, percent, barData, index) {
+                    return FlDotCirclePainter(
+                      radius: 3.5,
+                      color: secondaryColor,
+                      strokeWidth: 1.5,
+                      strokeColor: cardColor,
+                    );
+                  },
+                ),
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: secondaryColor.withValues(alpha: 0.10),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFinancialSummarySection({
+    required double totalRevenue,
+    required double totalFees,
+    required double outstandingFees,
+  }) {
+    final monthLabel =
+        '${_getMonthName(_selectedMonth.month)} ${_selectedMonth.year}';
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = width > 1100 ? 3 : (width > 650 ? 2 : 1);
+
+        return GridView.count(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: width > 650 ? 2.35 : 2.6,
+          children: [
+            _buildFinancialCard(
+              title: 'Total Revenue',
+              value: '₹${totalRevenue.toStringAsFixed(0)}',
+              subtitle: 'All paid transactions',
+              icon: Icons.auto_graph_rounded,
+              color: primaryColor,
+              accent: secondaryColor,
+            ),
+            _buildFinancialCard(
+              title: 'Total Fees',
+              value: '₹${totalFees.toStringAsFixed(0)}',
+              subtitle: 'Expected • $monthLabel',
+              icon: Icons.account_balance_wallet_rounded,
+              color: secondaryColor,
+              accent: primaryColor,
+            ),
+            _buildFinancialCard(
+              title: 'Outstanding Fees',
+              value: '₹${outstandingFees.toStringAsFixed(0)}',
+              subtitle: 'Pending + Not Paid + Overdue',
+              icon: Icons.pending_actions_rounded,
+              color: warningColor,
+              accent: errorColor,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFinancialCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required Color accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.42), width: 1.1),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.07),
+            blurRadius: 18,
+            spreadRadius: 1,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -18,
+            top: -22,
+            child: Container(
+              width: 82,
+              height: 82,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [accent.withValues(alpha: 0.13), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(color: color.withValues(alpha: 0.22)),
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: textSecondary, fontSize: 11),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
