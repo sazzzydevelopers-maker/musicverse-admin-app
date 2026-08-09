@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
-// Reusing theme constants & colors
 
 class AttendanceDashboardScreen extends StatefulWidget {
   const AttendanceDashboardScreen({super.key});
@@ -13,7 +12,9 @@ class AttendanceDashboardScreen extends StatefulWidget {
 
 class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   DateTime _selectedDate = DateTime.now();
+
   final TextEditingController _searchController = TextEditingController();
+
   String _searchQuery = '';
   String _selectedStatusFilter = 'All';
   String _selectedCourseFilter = 'All';
@@ -34,7 +35,9 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   }
 
   String get _formattedDateKey {
-    return "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
+    return '${_selectedDate.year}-'
+        '${_selectedDate.month.toString().padLeft(2, '0')}-'
+        '${_selectedDate.day.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -49,46 +52,52 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
           onPressed: () => context.go('/dashboard'),
         ),
         title: const Text(
-          "Attendance Management",
+          'Attendance Management',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: "Refresh Data",
+            tooltip: 'Refresh Data',
             onPressed: () => setState(() {}),
           ),
           const SizedBox(width: 8),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('user').snapshots(),
+        // IMPORTANT:
+        // Attendance is now stored as ONE document per student.
+        stream: FirebaseFirestore.instance.collection('attendance').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(color: primaryColor),
             );
           }
+
           if (snapshot.hasError) {
             return const Center(
               child: Text(
-                "Unable to load attendance records.",
+                'Unable to load attendance records.',
                 style: TextStyle(color: errorColor),
               ),
             );
           }
 
           final docs = snapshot.data?.docs ?? [];
-          int totalStudents = docs.length;
 
-          // Compute summary stats based on live todayAttendance / status
+          int totalStudents = docs.length;
           int presentCount = 0;
           int absentCount = 0;
           int pendingCount = 0;
 
-          for (var doc in docs) {
+          final List<String> availableCourseList = [];
+
+          for (final doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
-            final status = (data['todayAttendance'] ?? 'Pending').toString();
+
+            final status = _statusForSelectedDate(data);
+
             if (status == 'Present') {
               presentCount++;
             } else if (status == 'Absent') {
@@ -96,50 +105,66 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
             } else {
               pendingCount++;
             }
+
+            final course = (data['course'] ?? '').toString().trim();
+            if (course.isNotEmpty && !availableCourseList.contains(course)) {
+              availableCourseList.add(course);
+            }
           }
 
-          double attendancePercentage = totalStudents > 0
+          availableCourseList.sort(
+            (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+          );
+
+          final List<String> availableCourses = ['All', ...availableCourseList];
+
+          final double attendancePercentage = totalStudents > 0
               ? (presentCount / totalStudents) * 100
               : 0.0;
 
-          // Extract courses for dynamic filtering
-          Set<String> coursesSet = {'All'};
-          for (var doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            final course = data['course']?.toString() ?? '';
-            if (course.isNotEmpty) {
-              coursesSet.add(course);
-            }
-          }
-          List<String> availableCourses = coursesSet.toList();
-
-          // Filter students locally for instant search and multi-filtering
           final filteredDocs = docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
+
+            final studentName = (data['studentName'] ?? '')
+                .toString()
+                .toLowerCase();
+
             final firstName = (data['firstName'] ?? '')
                 .toString()
                 .toLowerCase();
+
             final lastName = (data['lastName'] ?? '').toString().toLowerCase();
-            final fullName = '$firstName $lastName';
+
             final studentId = (data['studentId'] ?? '')
                 .toString()
                 .toLowerCase();
-            final email = (data['email'] ?? '').toString().toLowerCase();
-            final phone = (data['phone'] ?? '').toString().toLowerCase();
-            final course = (data['course'] ?? '').toString();
-            final status = (data['todayAttendance'] ?? 'Pending').toString();
 
-            bool matchesSearch =
+            final email = (data['email'] ?? '').toString().toLowerCase();
+
+            final phone = (data['phone'] ?? data['phoneNumber'] ?? '')
+                .toString()
+                .toLowerCase();
+
+            final course = (data['course'] ?? '').toString();
+
+            final status = _statusForSelectedDate(data);
+
+            final fullName = '$firstName $lastName'.trim();
+
+            final matchesSearch =
                 _searchQuery.isEmpty ||
+                studentName.contains(_searchQuery) ||
                 fullName.contains(_searchQuery) ||
                 studentId.contains(_searchQuery) ||
                 email.contains(_searchQuery) ||
-                phone.contains(_searchQuery);
+                phone.contains(_searchQuery) ||
+                course.toLowerCase().contains(_searchQuery);
 
-            bool matchesStatus =
+            final matchesStatus =
                 _selectedStatusFilter == 'All' ||
                 status == _selectedStatusFilter;
-            bool matchesCourse =
+
+            final matchesCourse =
                 _selectedCourseFilter == 'All' ||
                 course == _selectedCourseFilter;
 
@@ -148,18 +173,18 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
           return LayoutBuilder(
             builder: (context, constraints) {
-              bool isDesktop = constraints.maxWidth > 900;
+              final bool isDesktop = constraints.maxWidth > 900;
+
               return SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header Subtitle & Date Selector Toolbar
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          "Manage and monitor daily student attendance.",
+                          'Manage and monitor daily student attendance.',
                           style: TextStyle(color: textSecondary, fontSize: 14),
                         ),
                         _buildDateSelector(),
@@ -167,7 +192,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Summary Cards Grid
+                    // SUMMARY CARDS
                     GridView.count(
                       crossAxisCount: constraints.maxWidth > 1200
                           ? 5
@@ -179,40 +204,41 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                       childAspectRatio: 1.5,
                       children: [
                         _buildStatCard(
-                          "Total Students",
+                          'Total Students',
                           totalStudents.toString(),
                           primaryColor,
                           Icons.people,
                         ),
                         _buildStatCard(
-                          "Present",
+                          'Present',
                           presentCount.toString(),
                           successColor,
                           Icons.check_circle,
                         ),
                         _buildStatCard(
-                          "Absent",
+                          'Absent',
                           absentCount.toString(),
                           errorColor,
                           Icons.cancel,
                         ),
                         _buildStatCard(
-                          "Pending",
+                          'Pending',
                           pendingCount.toString(),
                           warningColor,
                           Icons.pending,
                         ),
                         _buildStatCard(
-                          "Attendance",
-                          "${attendancePercentage.toStringAsFixed(1)}%",
+                          'Attendance',
+                          '${attendancePercentage.toStringAsFixed(1)}%',
                           primaryColor,
                           Icons.analytics,
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 28),
 
-                    // Search and Filters
+                    // SEARCH + FILTERS
                     Wrap(
                       spacing: 12,
                       runSpacing: 12,
@@ -222,16 +248,32 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                           child: TextField(
                             controller: _searchController,
                             style: const TextStyle(color: Colors.white),
-                            onChanged: (val) => setState(
-                              () => _searchQuery = val.trim().toLowerCase(),
-                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                _searchQuery = value.trim().toLowerCase();
+                              });
+                            },
                             decoration: InputDecoration(
-                              hintText: "Search student name, ID...",
+                              hintText: 'Search student name, ID...',
                               hintStyle: const TextStyle(color: textSecondary),
                               prefixIcon: const Icon(
                                 Icons.search,
                                 color: textSecondary,
                               ),
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(
+                                        Icons.clear,
+                                        color: textSecondary,
+                                      ),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() {
+                                          _searchQuery = '';
+                                        });
+                                      },
+                                    )
+                                  : null,
                               filled: true,
                               fillColor: cardColor,
                               border: OutlineInputBorder(
@@ -242,22 +284,31 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                           ),
                         ),
                         _buildDropdownFilter(
-                          "Status",
+                          'Status',
                           _selectedStatusFilter,
-                          ['All', 'Present', 'Absent', 'Pending'],
-                          (val) => setState(() => _selectedStatusFilter = val!),
+                          const ['All', 'Present', 'Absent', 'Pending'],
+                          (value) {
+                            setState(() {
+                              _selectedStatusFilter = value ?? 'All';
+                            });
+                          },
                         ),
                         _buildDropdownFilter(
-                          "Course",
+                          'Course',
                           _selectedCourseFilter,
                           availableCourses,
-                          (val) => setState(() => _selectedCourseFilter = val!),
+                          (value) {
+                            setState(() {
+                              _selectedCourseFilter = value ?? 'All';
+                            });
+                          },
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 24),
 
-                    // Attendance Table / List Container
+                    // STUDENT LIST
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
@@ -266,10 +317,10 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                       ),
                       child: filteredDocs.isEmpty
                           ? const Padding(
-                              padding: EdgeInsets.all(40.0),
+                              padding: EdgeInsets.all(40),
                               child: Center(
                                 child: Text(
-                                  "No students match your search.",
+                                  'No students match your search.',
                                   style: TextStyle(
                                     color: textSecondary,
                                     fontSize: 16,
@@ -289,18 +340,33 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                               itemBuilder: (context, index) {
                                 final doc = filteredDocs[index];
                                 final data = doc.data() as Map<String, dynamic>;
-                                final docId = doc.id;
-                                final firstName = data['firstName'] ?? '';
-                                final lastName = data['lastName'] ?? '';
-                                final studentId = data['studentId'] ?? 'N/A';
-                                final course = data['course'] ?? 'General';
-                                final status =
-                                    data['todayAttendance'] ?? 'Pending';
-                                final presentDays = data['presentDays'] ?? 0;
-                                final absentDays = data['absentDays'] ?? 0;
-                                final profilePhoto = data['profilePhoto'] ?? '';
 
-                                Color statusColor = status == 'Present'
+                                final String studentName = _getStudentName(
+                                  data,
+                                );
+
+                                final String studentId =
+                                    (data['studentId'] ?? 'N/A').toString();
+
+                                final String course =
+                                    (data['course'] ?? 'General').toString();
+
+                                final String status = _statusForSelectedDate(
+                                  data,
+                                );
+
+                                final int presentDays = _toInt(
+                                  data['presentDays'],
+                                );
+
+                                final int absentDays = _toInt(
+                                  data['absentDays'],
+                                );
+
+                                final String profilePhoto =
+                                    (data['profilePhoto'] ?? '').toString();
+
+                                final Color statusColor = status == 'Present'
                                     ? successColor
                                     : (status == 'Absent'
                                           ? errorColor
@@ -325,14 +391,18 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                           ),
                                         ),
                                   title: Text(
-                                    "$firstName $lastName",
+                                    studentName.isEmpty
+                                        ? 'Unnamed Student'
+                                        : studentName,
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                   subtitle: Text(
-                                    "ID: $studentId • Course: $course • Present: $presentDays | Absent: $absentDays",
+                                    'ID: $studentId • Course: $course • '
+                                    'Present: $presentDays | '
+                                    'Absent: $absentDays',
                                     style: const TextStyle(
                                       color: textSecondary,
                                       fontSize: 13,
@@ -360,17 +430,18 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                           color: textSecondary,
                                         ),
                                         color: cardColor,
-                                        onSelected: (newStatus) =>
-                                            _updateAttendanceStatus(
-                                              docId,
-                                              data,
-                                              newStatus,
-                                            ),
+                                        onSelected: (newStatus) {
+                                          _updateAttendanceStatus(
+                                            doc.id,
+                                            data,
+                                            newStatus,
+                                          );
+                                        },
                                         itemBuilder: (context) => [
                                           const PopupMenuItem(
                                             value: 'Present',
                                             child: Text(
-                                              "Mark Present",
+                                              'Mark Present',
                                               style: TextStyle(
                                                 color: successColor,
                                               ),
@@ -379,7 +450,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                           const PopupMenuItem(
                                             value: 'Absent',
                                             child: Text(
-                                              "Mark Absent",
+                                              'Mark Absent',
                                               style: TextStyle(
                                                 color: errorColor,
                                               ),
@@ -388,7 +459,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                           const PopupMenuItem(
                                             value: 'Pending',
                                             child: Text(
-                                              "Mark Pending",
+                                              'Mark Pending',
                                               style: TextStyle(
                                                 color: warningColor,
                                               ),
@@ -412,6 +483,69 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // ATTENDANCE HELPERS
+  // ---------------------------------------------------------------------------
+
+  String _statusForSelectedDate(Map<String, dynamic> data) {
+    final history = data['attendanceHistory'];
+
+    if (history is Map) {
+      final value = history[_formattedDateKey];
+
+      if (value != null) {
+        final status = value.toString().toLowerCase();
+
+        if (status == 'present') {
+          return 'Present';
+        }
+
+        if (status == 'absent') {
+          return 'Absent';
+        }
+      }
+    }
+
+    return 'Pending';
+  }
+
+  String _getStudentName(Map<String, dynamic> data) {
+    final studentName = (data['studentName'] ?? '').toString().trim();
+
+    if (studentName.isNotEmpty) {
+      return studentName;
+    }
+
+    final firstName = (data['firstName'] ?? '').toString().trim();
+    final lastName = (data['lastName'] ?? '').toString().trim();
+
+    return '$firstName $lastName'.trim();
+  }
+
+  int _toInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double _calculatePercentage(int presentDays, int totalDays) {
+    if (totalDays <= 0) {
+      return 0.0;
+    }
+
+    return (presentDays / totalDays) * 100;
+  }
+
+  // ---------------------------------------------------------------------------
+  // DATE SELECTOR
+  // ---------------------------------------------------------------------------
+
   Widget _buildDateSelector() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -425,24 +559,31 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
         children: [
           IconButton(
             icon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
-            onPressed: () => setState(() {
-              _selectedDate = _selectedDate.subtract(const Duration(days: 1));
-            }),
+            onPressed: () {
+              setState(() {
+                _selectedDate = _selectedDate.subtract(const Duration(days: 1));
+              });
+            },
           ),
           InkWell(
             onTap: () async {
-              DateTime? picked = await showDatePicker(
+              final DateTime? picked = await showDatePicker(
                 context: context,
                 initialDate: _selectedDate,
                 firstDate: DateTime(2025, 1, 1),
                 lastDate: DateTime(2030, 12, 31),
               );
+
               if (picked != null) {
-                setState(() => _selectedDate = picked);
+                setState(() {
+                  _selectedDate = picked;
+                });
               }
             },
             child: Text(
-              "${_selectedDate.day} ${_getMonthName(_selectedDate.month)}, ${_selectedDate.year}",
+              '${_selectedDate.day} '
+              '${_getMonthName(_selectedDate.month)}, '
+              '${_selectedDate.year}',
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -455,9 +596,11 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
               color: Colors.white,
               size: 20,
             ),
-            onPressed: () => setState(() {
-              _selectedDate = _selectedDate.add(const Duration(days: 1));
-            }),
+            onPressed: () {
+              setState(() {
+                _selectedDate = _selectedDate.add(const Duration(days: 1));
+              });
+            },
           ),
         ],
       ),
@@ -479,8 +622,13 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
       'Nov',
       'Dec',
     ];
+
     return months[month - 1];
   }
+
+  // ---------------------------------------------------------------------------
+  // STAT CARD
+  // ---------------------------------------------------------------------------
 
   Widget _buildStatCard(
     String title,
@@ -523,6 +671,10 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // DROPDOWN
+  // ---------------------------------------------------------------------------
+
   Widget _buildDropdownFilter(
     String label,
     String currentVal,
@@ -544,7 +696,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
           items: items
               .map(
                 (item) =>
-                    DropdownMenuItem(value: item, child: Text("$label: $item")),
+                    DropdownMenuItem(value: item, child: Text('$label: $item')),
               )
               .toList(),
           onChanged: onChanged,
@@ -553,49 +705,128 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // UPDATE ONE STUDENT'S ATTENDANCE
+  //
+  // IMPORTANT:
+  // There is ONE attendance document per student.
+  //
+  // Example:
+  // attendance/studentUid_001
+  //
+  // attendanceHistory:
+  // 2026-08-05: present
+  // 2026-08-06: absent
+  // 2026-08-08: present
+  //
+  // No new Firestore document is created for every day.
+  // ---------------------------------------------------------------------------
+
   Future<void> _updateAttendanceStatus(
     String docId,
     Map<String, dynamic> data,
     String newStatus,
   ) async {
-    final String oldStatus = data['todayAttendance'] ?? 'Pending';
-    if (oldStatus == newStatus) return; // No change needed
+    final String dateKey = _formattedDateKey;
 
-    int presentDays = data['presentDays'] ?? 0;
-    int absentDays = data['absentDays'] ?? 0;
+    final dynamic historyData = data['attendanceHistory'];
 
-    // Smart counter adjustment preventing duplicate increments
+    final Map<String, dynamic> history = historyData is Map
+        ? Map<String, dynamic>.from(historyData)
+        : <String, dynamic>{};
+
+    final String oldStatus = _statusForSelectedDate(data);
+
+    if (oldStatus == newStatus) {
+      return;
+    }
+
+    int presentDays = _toInt(data['presentDays']);
+    int absentDays = _toInt(data['absentDays']);
+    int totalDays = _toInt(data['totalDays']);
+
+    // If a date already has a status, changing Present <-> Absent
+    // must NOT increase totalDays again.
+    final bool hadPreviousStatus =
+        oldStatus == 'Present' || oldStatus == 'Absent';
+
+    // Remove the previous status from the counters.
     if (oldStatus == 'Present') {
-      presentDays = (presentDays > 0) ? presentDays - 1 : 0;
+      if (presentDays > 0) {
+        presentDays--;
+      }
+    } else if (oldStatus == 'Absent') {
+      if (absentDays > 0) {
+        absentDays--;
+      }
     }
-    if (oldStatus == 'Absent') {
-      absentDays = (absentDays > 0) ? absentDays - 1 : 0;
+
+    // Apply the new status.
+    if (newStatus == 'Present') {
+      presentDays++;
+
+      if (!hadPreviousStatus) {
+        totalDays++;
+      }
+
+      history[dateKey] = 'present';
+    } else if (newStatus == 'Absent') {
+      absentDays++;
+
+      if (!hadPreviousStatus) {
+        totalDays++;
+      }
+
+      history[dateKey] = 'absent';
+    } else {
+      // Pending means no attendance has been recorded for this date.
+      // Therefore remove the date from attendanceHistory.
+      history.remove(dateKey);
+
+      if (hadPreviousStatus && totalDays > 0) {
+        totalDays--;
+      }
     }
 
-    if (newStatus == 'Present') presentDays++;
-    if (newStatus == 'Absent') absentDays++;
+    if (totalDays < 0) {
+      totalDays = 0;
+    }
 
-    // Batch update user document and historical attendance collection
-    final batch = FirebaseFirestore.instance.batch();
+    final double attendancePercentage = _calculatePercentage(
+      presentDays,
+      totalDays,
+    );
 
-    final userRef = FirebaseFirestore.instance.collection('user').doc(docId);
-    batch.update(userRef, {
-      'todayAttendance': newStatus,
+    final attendanceRef = FirebaseFirestore.instance
+        .collection('attendance')
+        .doc(docId);
+
+    await attendanceRef.update({
       'presentDays': presentDays,
       'absentDays': absentDays,
+      'totalDays': totalDays,
+      'attendancePercentage': attendancePercentage,
+      'attendanceHistory': history,
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
-    final historyRef = FirebaseFirestore.instance
-        .collection('attendance')
-        .doc('${_formattedDateKey}_$docId');
-    batch.set(historyRef, {
-      'studentUid': docId,
-      'date': _formattedDateKey,
-      'status': newStatus,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    if (!mounted) {
+      return;
+    }
 
-    await batch.commit();
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          newStatus == 'Pending'
+              ? 'Attendance removed for $dateKey.'
+              : 'Attendance marked $newStatus for $dateKey.',
+        ),
+        backgroundColor: newStatus == 'Present'
+            ? successColor
+            : (newStatus == 'Absent' ? errorColor : warningColor),
+      ),
+    );
   }
 }
