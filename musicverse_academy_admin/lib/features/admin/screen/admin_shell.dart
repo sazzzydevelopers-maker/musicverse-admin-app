@@ -47,6 +47,10 @@ class _AdminShellState extends State<AdminShell> {
     );
   }
 
+  // ============================================================
+  // SIDEBAR
+  // ============================================================
+
   Widget _buildSidebar() {
     return Container(
       width: 260,
@@ -87,6 +91,10 @@ class _AdminShellState extends State<AdminShell> {
               itemCount: _navigationItems.length,
               itemBuilder: (context, index) {
                 final item = _navigationItems[index];
+
+                // Only Dashboard and Students are currently implemented.
+                final isImplemented = index == 0 || index == 1;
+
                 final isSelected = _selectedIndex == index;
 
                 return Padding(
@@ -94,9 +102,15 @@ class _AdminShellState extends State<AdminShell> {
                   child: InkWell(
                     borderRadius: BorderRadius.circular(10),
                     onTap: () {
-                      setState(() {
-                        _selectedIndex = index;
-                      });
+                      if (isImplemented) {
+                        // Dashboard or Students
+                        setState(() {
+                          _selectedIndex = index;
+                        });
+                      } else {
+                        // All other sections
+                        _showComingSoonDialog(item.title);
+                      }
                     },
                     child: Container(
                       height: 52,
@@ -165,6 +179,10 @@ class _AdminShellState extends State<AdminShell> {
     );
   }
 
+  // ============================================================
+  // MAIN CONTENT
+  // ============================================================
+
   Widget _buildMainContent() {
     switch (_selectedIndex) {
       case 0:
@@ -173,84 +191,123 @@ class _AdminShellState extends State<AdminShell> {
       case 1:
         return const StudentManagementScreen();
 
-      case 2:
-        return const _ComingSoonScreen(title: 'Teachers');
-
-      case 3:
-        return const _ComingSoonScreen(title: 'Courses');
-
-      case 4:
-        return const _ComingSoonScreen(title: 'Payments');
-
-      case 5:
-        return const _ComingSoonScreen(title: 'Attendance');
-
-      case 6:
-        return const _ComingSoonScreen(title: 'Practice');
-
-      case 7:
-        return const _ComingSoonScreen(title: 'Assignments');
-
-      case 8:
-        return const _ComingSoonScreen(title: 'Quizzes');
-
-      case 9:
-        return const _ComingSoonScreen(title: 'Certificates');
-
-      case 10:
-        return const _ComingSoonScreen(title: 'Reports');
-
-      case 11:
-        return const _ComingSoonScreen(title: 'Settings');
-
       default:
         return const DashboardScreen();
     }
   }
+
+  // ============================================================
+  // COMING SOON POPUP
+  // ============================================================
+
+  void _showComingSoonDialog(String title) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: const Color(0xFF171C35),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Container(
+            width: 420,
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ICON
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF27204D),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.construction_outlined,
+                    color: Color(0xFF7C4DFF),
+                    size: 36,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // TITLE
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // MESSAGE
+                const Text(
+                  'Coming Soon',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF9D6BFF),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                const Text(
+                  'This section is currently under development.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFFB0B5D3), fontSize: 14),
+                ),
+
+                const SizedBox(height: 24),
+
+                // OK BUTTON
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7C4DFF),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text(
+                      'OK',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
+
+// ============================================================
+// NAVIGATION ITEM MODEL
+// ============================================================
 
 class _AdminNavigationItem {
   final String title;
   final IconData icon;
 
   const _AdminNavigationItem({required this.title, required this.icon});
-}
-
-class _ComingSoonScreen extends StatelessWidget {
-  final String title;
-
-  const _ComingSoonScreen({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF0D1020),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.construction_outlined,
-              color: Color(0xFF7C4DFF),
-              size: 60,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'This section is ready for implementation.',
-              style: TextStyle(color: Color(0xFFB0B5D3), fontSize: 15),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
