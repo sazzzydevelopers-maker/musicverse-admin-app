@@ -249,11 +249,20 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                 final matchesSearch =
                     _searchQuery.isEmpty || searchText.contains(_searchQuery);
 
+                final storedStatus = (payment?['status'] ?? '')
+                    .toString()
+                    .trim()
+                    .toLowerCase();
+
                 final displayStatus = paid
                     ? 'Paid'
+                    : storedStatus == 'pending'
+                    ? 'Pending'
+                    : storedStatus == 'not paid'
+                    ? 'Not Paid'
                     : overdue
                     ? 'Overdue'
-                    : 'Pending';
+                    : 'Not Paid';
 
                 final matchesStatus =
                     _selectedStatusFilter == 'All' ||
@@ -577,13 +586,13 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
         ? (item['monthlyFee'] as num).toDouble()
         : 0.0;
 
-    final status = (item['displayStatus'] ?? 'Pending').toString();
+    final status = (item['displayStatus'] ?? 'Not Paid').toString();
 
     final payment = item['payment'] as Map<String, dynamic>?;
 
     final statusColor = status == 'Paid'
         ? successColor
-        : status == 'Overdue'
+        : (status == 'Not Paid' || status == 'Overdue')
         ? errorColor
         : warningColor;
 
@@ -697,6 +706,13 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                       style: TextStyle(color: successColor),
                     ),
                   ),
+                const PopupMenuItem(
+                  value: 'change_status',
+                  child: Text(
+                    "Edit Payment Status",
+                    style: TextStyle(color: warningColor),
+                  ),
+                ),
                 if (status == 'Paid')
                   const PopupMenuItem(
                     value: 'receipt',
@@ -771,6 +787,10 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
         await _markAsPaid(item);
         break;
 
+      case 'change_status':
+        await _showPaymentStatusChanger(item);
+        break;
+
       case 'receipt':
         _showReceipt(item);
         break;
@@ -782,6 +802,791 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
       case 'history':
         await _showPaymentHistory(item);
         break;
+    }
+  }
+
+  Future<void> _showPaymentStatusChanger(Map<String, dynamic> item) async {
+    final name = (item['studentName'] ?? 'Student').toString();
+    final fee = item['monthlyFee'] is num
+        ? (item['monthlyFee'] as num).toDouble()
+        : 0.0;
+    final monthLabel =
+        '${_getMonthName(_selectedMonth.month)} ${_selectedMonth.year}';
+
+    final payment = item['payment'] as Map<String, dynamic>?;
+    final currentStatus =
+        (payment?['status'] ?? item['displayStatus'] ?? 'Not Paid')
+            .toString()
+            .trim();
+
+    final currentMethod = (payment?['paymentMethod'] ?? 'upi')
+        .toString()
+        .toLowerCase();
+
+    const paymentMethods = <String>[
+      'upi',
+      'cash',
+      'bank transfer',
+      'card',
+      'other',
+    ];
+
+    String selectedStatus = currentStatus;
+    String selectedMethod = paymentMethods.contains(currentMethod)
+        ? currentMethod
+        : 'upi';
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final statusColor = selectedStatus == 'Paid'
+                ? successColor
+                : selectedStatus == 'Not Paid'
+                ? errorColor
+                : warningColor;
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 500,
+                constraints: const BoxConstraints(maxHeight: 680),
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: primaryColor.withValues(alpha: 0.38),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.42),
+                      blurRadius: 30,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  primaryColor.withValues(alpha: 0.25),
+                                  secondaryColor.withValues(alpha: 0.12),
+                                ],
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.payments_rounded,
+                              color: secondaryColor,
+                              size: 23,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Edit Payment Status',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 22,
+                              backgroundColor: primaryColor,
+                              child: Text(
+                                _initials(name),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '$monthLabel  •  ₹${fee.toStringAsFixed(0)}',
+                                    style: const TextStyle(
+                                      color: textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Payment Status',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 9),
+                      _statusChoiceTile(
+                        dialogContext,
+                        value: 'Paid',
+                        title: 'Paid',
+                        subtitle: 'Payment is received for this month.',
+                        icon: Icons.check_circle_rounded,
+                        color: successColor,
+                        isCurrent: currentStatus.toLowerCase() == 'paid',
+                        isSelected: selectedStatus == 'Paid',
+                        onSelect: () {
+                          setDialogState(() {
+                            selectedStatus = 'Paid';
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 9),
+                      _statusChoiceTile(
+                        dialogContext,
+                        value: 'Pending',
+                        title: 'Pending',
+                        subtitle:
+                            'Payment is expected but has not been received.',
+                        icon: Icons.schedule_rounded,
+                        color: warningColor,
+                        isCurrent: currentStatus.toLowerCase() == 'pending',
+                        isSelected: selectedStatus == 'Pending',
+                        onSelect: () {
+                          setDialogState(() {
+                            selectedStatus = 'Pending';
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 9),
+                      _statusChoiceTile(
+                        dialogContext,
+                        value: 'Not Paid',
+                        title: 'Not Paid',
+                        subtitle: 'Record this month as unpaid.',
+                        icon: Icons.cancel_rounded,
+                        color: errorColor,
+                        isCurrent: currentStatus.toLowerCase() == 'not paid',
+                        isSelected: selectedStatus == 'Not Paid',
+                        onSelect: () {
+                          setDialogState(() {
+                            selectedStatus = 'Not Paid';
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Payment Method',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      AnimatedOpacity(
+                        opacity: selectedStatus == 'Paid' ? 1 : 0.45,
+                        duration: const Duration(milliseconds: 160),
+                        child: IgnorePointer(
+                          ignoring: selectedStatus != 'Paid',
+                          child: DropdownButtonFormField<String>(
+                            initialValue: selectedMethod,
+                            dropdownColor: cardColor,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            decoration: InputDecoration(
+                              prefixIcon: Icon(
+                                Icons.account_balance_wallet_rounded,
+                                color: statusColor,
+                                size: 19,
+                              ),
+                              hintText: 'Select payment method',
+                              hintStyle: const TextStyle(color: textSecondary),
+                              filled: true,
+                              fillColor: bgColor,
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                  color: Colors.white10,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                  color: primaryColor,
+                                ),
+                              ),
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'upi',
+                                child: Text('UPI'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'cash',
+                                child: Text('Cash'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'bank transfer',
+                                child: Text('Bank Transfer'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'card',
+                                child: Text('Card'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'other',
+                                child: Text('Other'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() {
+                                  selectedMethod = value;
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        selectedStatus == 'Paid'
+                            ? 'The selected method will be saved with this month\'s paid payment.'
+                            : 'Payment method is disabled until the status is Paid.',
+                        style: const TextStyle(
+                          color: textSecondary,
+                          fontSize: 11,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.07),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: statusColor.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: Text(
+                          currentStatus.toLowerCase() == 'paid' &&
+                                  selectedStatus != 'Paid'
+                              ? 'Changing from Paid will remove the payment date, payment method, amount paid and receipt number. The transaction will disappear from Payment History.'
+                              : selectedStatus == 'Paid'
+                              ? 'Paid payments are included in Payment History and can have a receipt number.'
+                              : 'New/unpaid students start as Not Paid. Pending is only used when the admin explicitly selects Pending. Neither Pending nor Not Paid is included in Payment History.',
+                          style: const TextStyle(
+                            color: textSecondary,
+                            fontSize: 11.5,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(color: textSecondary),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: statusColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 17,
+                                vertical: 13,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: () {
+                              Navigator.pop(dialogContext, {
+                                'status': selectedStatus,
+                                'paymentMethod': selectedMethod,
+                              });
+                            },
+                            icon: const Icon(Icons.save_rounded, size: 17),
+                            label: const Text(
+                              'Save Changes',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    final newStatus = result['status'] ?? currentStatus;
+    final newMethod = result['paymentMethod'] ?? selectedMethod;
+
+    final statusChanged =
+        newStatus.toLowerCase() != currentStatus.toLowerCase();
+    final methodChanged =
+        newMethod.toLowerCase() != currentMethod.toLowerCase();
+
+    if (!statusChanged && !methodChanged) {
+      return;
+    }
+
+    await _confirmPaymentStatusChange(
+      item,
+      newStatus,
+      selectedPaymentMethod: newMethod,
+    );
+  }
+
+  Widget _statusChoiceTile(
+    BuildContext dialogContext, {
+    required String value,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required bool isCurrent,
+    required bool isSelected,
+    required VoidCallback onSelect,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onSelect,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: double.infinity,
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withValues(alpha: 0.10) : bgColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color.withValues(alpha: 0.60) : Colors.white10,
+            width: isSelected ? 1.2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 21),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (isCurrent) ...[
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: color.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: Text(
+                            'CURRENT',
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 8,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: textSecondary,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected ? color : Colors.white24,
+                  width: 2,
+                ),
+                color: isSelected ? color : Colors.transparent,
+              ),
+              child: isSelected
+                  ? const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 15,
+                    )
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmPaymentStatusChange(
+    Map<String, dynamic> item,
+    String newStatus, {
+    required String selectedPaymentMethod,
+  }) async {
+    final name = (item['studentName'] ?? 'Student').toString();
+    final fee = item['monthlyFee'] is num
+        ? (item['monthlyFee'] as num).toDouble()
+        : 0.0;
+    final monthLabel =
+        '${_getMonthName(_selectedMonth.month)} ${_selectedMonth.year}';
+
+    final payment = item['payment'] as Map<String, dynamic>?;
+    final currentStatus =
+        (payment?['status'] ?? item['displayStatus'] ?? 'Not Paid')
+            .toString()
+            .trim();
+    final currentMethod = (payment?['paymentMethod'] ?? 'N/A').toString();
+
+    final isPaid = newStatus == 'Paid';
+    final isNotPaid = newStatus == 'Not Paid';
+    final color = isPaid
+        ? successColor
+        : isNotPaid
+        ? errorColor
+        : warningColor;
+
+    final leavingPaid = currentStatus.toLowerCase() == 'paid' && !isPaid;
+    final changingPaidMethod =
+        currentStatus.toLowerCase() == 'paid' &&
+        isPaid &&
+        currentMethod.toLowerCase() != selectedPaymentMethod.toLowerCase();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 450,
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: color.withValues(alpha: 0.32)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      changingPaidMethod
+                          ? Icons.account_balance_wallet_rounded
+                          : isPaid
+                          ? Icons.check_circle_rounded
+                          : isNotPaid
+                          ? Icons.warning_rounded
+                          : Icons.schedule_rounded,
+                      color: color,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Confirm Payment Changes',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$monthLabel  •  ₹${fee.toStringAsFixed(0)}',
+                  style: const TextStyle(color: textSecondary),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: color.withValues(alpha: 0.22)),
+                  ),
+                  child: Text(
+                    leavingPaid
+                        ? 'The payment will become $newStatus. The paid amount, payment date, payment method and receipt number will be removed, and the transaction will disappear from Payment History.'
+                        : changingPaidMethod
+                        ? 'The payment will remain Paid. The payment method will be changed to ${selectedPaymentMethod.toUpperCase()}.'
+                        : isPaid
+                        ? currentStatus.toLowerCase() == 'paid'
+                              ? 'The payment will remain Paid with ${selectedPaymentMethod.toUpperCase()} as the payment method.'
+                              : 'This month will be recorded as Paid using ${selectedPaymentMethod.toUpperCase()}. A receipt number will be generated.'
+                        : 'This month will be recorded as $newStatus.',
+                    style: const TextStyle(
+                      color: textSecondary,
+                      height: 1.45,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: textSecondary),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: color,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => Navigator.pop(dialogContext, true),
+                      child: const Text(
+                        'Confirm Changes',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    await _updatePaymentStatus(
+      item,
+      newStatus,
+      selectedPaymentMethod: selectedPaymentMethod,
+    );
+  }
+
+  Future<void> _updatePaymentStatus(
+    Map<String, dynamic> item,
+    String newStatus, {
+    required String selectedPaymentMethod,
+  }) async {
+    final payment = item['payment'] as Map<String, dynamic>?;
+
+    if (payment == null) {
+      if (newStatus == 'Paid') {
+        await _markAsPaid(item, selectedPaymentMethod: selectedPaymentMethod);
+        return;
+      }
+      _showError('No payment record exists for this month.');
+      return;
+    }
+
+    final paymentDocId = (payment['docId'] ?? '').toString();
+
+    if (paymentDocId.isEmpty) {
+      _showError('Payment record ID is missing.');
+      return;
+    }
+
+    try {
+      final monthName = _getMonthName(_selectedMonth.month).toLowerCase();
+
+      final currentStatus =
+          (payment['status'] ?? item['displayStatus'] ?? 'Not Paid')
+              .toString()
+              .trim();
+
+      if (newStatus == 'Paid') {
+        if (currentStatus.toLowerCase() == 'paid') {
+          // Editing only the payment method for an existing Paid transaction
+          // does not create a new receipt.
+          await FirebaseFirestore.instance
+              .collection('feePayments')
+              .doc(paymentDocId)
+              .update({
+                'status': 'Paid',
+                'paymentMethod': selectedPaymentMethod,
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: successColor,
+              content: Text(
+                'Payment method changed to ${selectedPaymentMethod.toUpperCase()}.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        // Pending / Not Paid -> Paid:
+        // use the selected payment method and generate a fresh receipt.
+        await _markAsPaid(item, selectedPaymentMethod: selectedPaymentMethod);
+        return;
+      }
+
+      // Paid -> Pending / Not Paid:
+      // Keep the monthly record but remove every paid transaction field.
+      await FirebaseFirestore.instance
+          .collection('feePayments')
+          .doc(paymentDocId)
+          .update({
+            'status': newStatus,
+            'amountPaid': 0,
+            'paymentDate': FieldValue.delete(),
+            'lastPaymentDate': FieldValue.delete(),
+            'paymentMethod': FieldValue.delete(),
+            'receiptNumber': FieldValue.delete(),
+            'statusChangedAt': FieldValue.serverTimestamp(),
+            'statusChangedFrom': currentStatus,
+            'updatedAt': FieldValue.serverTimestamp(),
+            'paymentMonth': monthName,
+            'paymentYear': _selectedMonth.year,
+            'monthlyFee': item['monthlyFee'] is num
+                ? item['monthlyFee']
+                : payment['monthlyFee'],
+            'nextDueDate': Timestamp.fromDate(
+              DateTime(_selectedMonth.year, _selectedMonth.month + 1, 1),
+            ),
+          });
+
+      // Keep the student's current fee status synchronized.
+      final userDocId = item['docId']?.toString();
+      if (userDocId != null && userDocId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('user')
+            .doc(userDocId)
+            .update({
+              'feeStatus': newStatus,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: newStatus == 'Not Paid' ? errorColor : warningColor,
+          content: Text(
+            '${item['studentName'] ?? 'Student'} is now $newStatus for $monthName ${_selectedMonth.year}. '
+            'The paid receipt was removed from Payment History.',
+          ),
+        ),
+      );
+    } catch (e) {
+      _showError('Unable to change payment status.');
     }
   }
 
@@ -1057,6 +1862,11 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
 
     try {
       final now = DateTime.now();
+      final selectedMonth = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month,
+        1,
+      );
 
       final studentName = (item['studentName'] ?? 'Student').toString();
 
@@ -1070,7 +1880,11 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
 
       final receiptNumber = await _generateReceiptNumber(studentName, uid);
 
-      final nextDueDate = DateTime(now.year, now.month + 1, now.day);
+      final nextDueDate = DateTime(
+        selectedMonth.year,
+        selectedMonth.month + 1,
+        1,
+      );
 
       final payment = item['payment'] as Map<String, dynamic>?;
 
@@ -1088,8 +1902,8 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
         'nextDueDate': Timestamp.fromDate(nextDueDate),
         'joinDate': item['joinDate'] ?? FieldValue.serverTimestamp(),
         'paymentMethod': paymentMethod,
-        'paymentMonth': _getMonthName(now.month).toLowerCase(),
-        'paymentYear': now.year,
+        'paymentMonth': _getMonthName(selectedMonth.month).toLowerCase(),
+        'paymentYear': selectedMonth.year,
         'receiptNumber': receiptNumber,
         'updatedAt': FieldValue.serverTimestamp(),
       };
@@ -1566,7 +2380,6 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
 
   Future<void> _showPaymentHistory(Map<String, dynamic> item) async {
     final uid = (item['uid'] ?? '').toString();
-
     final name = (item['studentName'] ?? 'Student').toString();
 
     try {
@@ -1575,9 +2388,15 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
           .where('uid', isEqualTo: uid)
           .get();
 
-      final records = snapshot.docs.map((doc) {
-        return {...doc.data(), 'docId': doc.id};
-      }).toList();
+      final records = snapshot.docs
+          .map((doc) {
+            return {...doc.data(), 'docId': doc.id};
+          })
+          .where((record) {
+            // Payment History contains actual paid transactions only.
+            return (record['status'] ?? '').toString().toLowerCase() == 'paid';
+          })
+          .toList();
 
       records.sort((a, b) {
         final aDate =
@@ -1595,103 +2414,245 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
 
       showDialog(
         context: context,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: cardColor,
-            title: Text(
-              "$name - Payment History",
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+        builder: (dialogContext) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              width: 620,
+              constraints: const BoxConstraints(maxHeight: 560),
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: primaryColor.withValues(alpha: 0.32)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 30,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
               ),
-            ),
-            content: SizedBox(
-              width: 550,
-              height: 400,
-              child: records.isEmpty
-                  ? const Center(
-                      child: Text(
-                        "No payment history found.",
-                        style: TextStyle(color: textSecondary),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: successColor.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.history_rounded,
+                          color: successColor,
+                        ),
                       ),
-                    )
-                  : ListView.separated(
-                      itemCount: records.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(color: Colors.white12),
-                      itemBuilder: (context, index) {
-                        final record = records[index];
-
-                        final amount = record['amountPaid'] is num
-                            ? (record['amountPaid'] as num).toDouble()
-                            : record['monthlyFee'] is num
-                            ? (record['monthlyFee'] as num).toDouble()
-                            : 0.0;
-
-                        final status = (record['status'] ?? 'Pending')
-                            .toString();
-
-                        final month = (record['paymentMonth'] ?? '').toString();
-
-                        final year = (record['paymentYear'] ?? '').toString();
-
-                        final receipt = (record['receiptNumber'] ?? 'N/A')
-                            .toString();
-
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            "$month $year",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          subtitle: Text(
-                            "Receipt: $receipt • "
-                            "${(record['paymentMethod'] ?? 'N/A').toString().toUpperCase()}",
-                            style: const TextStyle(
-                              color: textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                "₹${amount.toStringAsFixed(0)}",
-                                style: TextStyle(
-                                  color: status.toLowerCase() == 'paid'
-                                      ? successColor
-                                      : errorColor,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Payment History',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.w700,
                               ),
-                              Text(
-                                status,
-                                style: TextStyle(
-                                  color: status.toLowerCase() == 'paid'
-                                      ? successColor
-                                      : errorColor,
-                                  fontSize: 11,
-                                ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              name,
+                              style: const TextStyle(
+                                color: textSecondary,
+                                fontSize: 12,
                               ),
-                            ],
-                          ),
-                        );
-                      },
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  "Close",
-                  style: TextStyle(color: textSecondary),
-                ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: secondaryColor,
+                          size: 18,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Only completed Paid transactions are shown here. '
+                            'If a payment is changed to Pending or Not Paid, '
+                            'its paid history entry disappears automatically.',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 11.5,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Flexible(
+                    child: records.isEmpty
+                        ? Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 55),
+                            child: const Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.receipt_long_outlined,
+                                  color: textSecondary,
+                                  size: 44,
+                                ),
+                                SizedBox(height: 12),
+                                Text(
+                                  'No paid payment history',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(height: 5),
+                                Text(
+                                  'Paid transactions will appear here.',
+                                  style: TextStyle(
+                                    color: textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: records.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final record = records[index];
+
+                              final amount = record['amountPaid'] is num
+                                  ? (record['amountPaid'] as num).toDouble()
+                                  : 0.0;
+
+                              final month = (record['paymentMonth'] ?? '')
+                                  .toString();
+                              final year = (record['paymentYear'] ?? '')
+                                  .toString();
+                              final method = (record['paymentMethod'] ?? 'N/A')
+                                  .toString()
+                                  .toUpperCase();
+                              final receipt = (record['receiptNumber'] ?? 'N/A')
+                                  .toString();
+
+                              final paymentDate = _timestampToDate(
+                                record['paymentDate'],
+                              );
+                              final dateLabel = paymentDate == null
+                                  ? 'Date not available'
+                                  : '${paymentDate.day.toString().padLeft(2, '0')}/'
+                                        '${paymentDate.month.toString().padLeft(2, '0')}/'
+                                        '${paymentDate.year}';
+
+                              return Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: bgColor,
+                                  borderRadius: BorderRadius.circular(13),
+                                  border: Border.all(
+                                    color: successColor.withValues(alpha: 0.12),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        color: successColor.withValues(
+                                          alpha: 0.11,
+                                        ),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.check_rounded,
+                                        color: successColor,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '$month $year',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '$method  •  $dateLabel',
+                                            style: const TextStyle(
+                                              color: textSecondary,
+                                              fontSize: 11.5,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            'Receipt: $receipt',
+                                            style: const TextStyle(
+                                              color: textSecondary,
+                                              fontSize: 11.5,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '₹${amount.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        color: successColor,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         },
       );
@@ -1880,7 +2841,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
           dropdownColor: cardColor,
           style: const TextStyle(color: Colors.white, fontSize: 14),
           icon: const Icon(Icons.arrow_drop_down, color: textSecondary),
-          items: ['All', 'Paid', 'Pending', 'Overdue']
+          items: ['All', 'Paid', 'Not Paid', 'Pending', 'Overdue']
               .map(
                 (status) => DropdownMenuItem(
                   value: status,
