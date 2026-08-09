@@ -554,6 +554,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
   }
 
   Widget _buildStudentPaymentTile(Map<String, dynamic> item) {
+    final isActive = _isStudentActive(item);
     final name = (item['studentName'] ?? 'Unknown Student').toString();
     final studentId = _getStudentId(item);
     final course = (item['course'] ?? 'N/A').toString();
@@ -627,12 +628,30 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                   "${payment['receiptNumber']}",
                   style: const TextStyle(color: textSecondary, fontSize: 12),
                 ),
+              const SizedBox(height: 7),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildAccountAccessBadge(isActive),
+                  if (!isActive) ...[
+                    const SizedBox(width: 7),
+                    const Text(
+                      'Payment controls locked',
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ],
           ),
         ],
       ),
       trailing: SizedBox(
-        width: 170,
+        width: 190,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -653,13 +672,23 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
               ),
             ),
             const SizedBox(width: 4),
+            // ADDED: inactive students cannot open or execute payment actions.
+            // Their existing fee/payment records remain visible.
             PopupMenuButton<String>(
-              tooltip: "Payment options",
-              icon: const Icon(Icons.more_vert, color: textSecondary),
+              enabled: isActive,
+              tooltip: isActive
+                  ? "Payment options"
+                  : "Payment controls locked for inactive student",
+              icon: Icon(
+                isActive ? Icons.more_vert : Icons.lock_rounded,
+                color: isActive ? textSecondary : errorColor,
+              ),
               color: cardColor,
-              onSelected: (value) {
-                _handlePaymentAction(value, item);
-              },
+              onSelected: isActive
+                  ? (value) {
+                      _handlePaymentAction(value, item);
+                    }
+                  : null,
               itemBuilder: (context) => [
                 const PopupMenuItem(
                   value: 'edit_fee',
@@ -721,6 +750,57 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
     );
   }
 
+  // ADDED: Student account access is controlled by accountStatus.
+  // Active students can use payment actions; inactive students remain visible
+  // for historical/payment record visibility but their payment controls are locked.
+  bool _isStudentActive(Map<String, dynamic> item) {
+    final rawStatus = (item['accountStatus'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    if (rawStatus.isEmpty) {
+      // Backward compatible: older student documents without accountStatus
+      // continue to behave as Active.
+      return true;
+    }
+
+    return rawStatus == 'active';
+  }
+
+  Widget _buildAccountAccessBadge(bool isActive) {
+    final color = isActive ? successColor : errorColor;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isActive ? Icons.lock_open_rounded : Icons.lock_rounded,
+            color: color,
+            size: 12,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            isActive ? 'ACTIVE' : 'INACTIVE',
+            style: TextStyle(
+              color: color,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _getStudentId(Map<String, dynamic> item) {
     final value = item['studentId'] ?? item['student_id'] ?? item['studentID'];
 
@@ -751,6 +831,16 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
     String action,
     Map<String, dynamic> item,
   ) async {
+    // ADDED: never allow payment actions for an inactive student, even if an
+    // action is triggered programmatically or from a stale UI state.
+    if (!_isStudentActive(item)) {
+      _showError(
+        '${item['studentName'] ?? 'Student'} is inactive. '
+        'Payment controls are locked until the account is Active.',
+      );
+      return;
+    }
+
     switch (action) {
       case 'edit_fee':
         await _editMonthlyFee(item);
@@ -783,6 +873,14 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
   }
 
   Future<void> _showPaymentStatusChanger(Map<String, dynamic> item) async {
+    if (!_isStudentActive(item)) {
+      _showError(
+        '${item['studentName'] ?? 'Student'} is inactive. '
+        'Payment status cannot be changed.',
+      );
+      return;
+    }
+
     final name = (item['studentName'] ?? 'Student').toString();
     final fee = item['monthlyFee'] is num
         ? (item['monthlyFee'] as num).toDouble()
@@ -1568,6 +1666,14 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
   }
 
   Future<void> _editMonthlyFee(Map<String, dynamic> item) async {
+    if (!_isStudentActive(item)) {
+      _showError(
+        '${item['studentName'] ?? 'Student'} is inactive. '
+        'Monthly fee editing is locked.',
+      );
+      return;
+    }
+
     final controller = TextEditingController(
       text: (item['monthlyFee'] ?? 0).toString(),
     );
@@ -1665,6 +1771,14 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
   }
 
   Future<void> _editPaymentMethod(Map<String, dynamic> item) async {
+    if (!_isStudentActive(item)) {
+      _showError(
+        '${item['studentName'] ?? 'Student'} is inactive. '
+        'Payment method editing is locked.',
+      );
+      return;
+    }
+
     final payment = item['payment'] as Map<String, dynamic>?;
 
     final current = (payment?['paymentMethod'] ?? 'upi')
@@ -1769,6 +1883,14 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
     Map<String, dynamic> item, {
     String? selectedPaymentMethod,
   }) async {
+    if (!_isStudentActive(item)) {
+      _showError(
+        '${item['studentName'] ?? 'Student'} is inactive. '
+        'Payment cannot be recorded.',
+      );
+      return;
+    }
+
     String paymentMethod = selectedPaymentMethod ?? 'upi';
 
     if (selectedPaymentMethod == null) {
