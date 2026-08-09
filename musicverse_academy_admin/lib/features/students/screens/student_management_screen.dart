@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 class StudentManagementScreen extends StatefulWidget {
   const StudentManagementScreen({super.key});
@@ -868,34 +869,145 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
             Future<void> pickStudentImage() async {
               try {
+                // ==========================================================
+                // 1. SELECT IMAGE
+                // ==========================================================
+
                 final ImagePicker picker = ImagePicker();
 
-                final XFile? image = await picker.pickImage(
+                final XFile? pickedImage = await picker.pickImage(
                   source: ImageSource.gallery,
-
-                  imageQuality: 85,
+                  imageQuality: 90,
                 );
 
-                if (image == null) {
+                // User cancelled image selection
+                if (pickedImage == null) {
                   return;
                 }
 
-                final Uint8List bytes = await image.readAsBytes();
-
-                setDialogState(() {
-                  selectedImageBytes = bytes;
-
-                  // A new photo has
-                  // been selected.
-                  existingImageUrl = null;
-                });
-              } catch (e) {
+                // The dialog may have been closed while the gallery was open.
                 if (!dialogContext.mounted) {
                   return;
                 }
 
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(content: Text('Unable to select photo: $e')),
+                // ==========================================================
+                // 2. OPEN ADJUSTABLE CROP EDITOR
+                // ==========================================================
+
+                final CroppedFile? croppedFile = await ImageCropper().cropImage(
+                  sourcePath: pickedImage.path,
+
+                  uiSettings: [
+                    // ======================================================
+                    // ANDROID
+                    // ======================================================
+                    AndroidUiSettings(
+                      toolbarTitle: 'Adjust Photo',
+                      toolbarColor: bgColor,
+                      toolbarWidgetColor: Colors.white,
+                      activeControlsWidgetColor: primaryColor,
+
+                      cropStyle: CropStyle.circle,
+
+                      aspectRatioPresets: [CropAspectRatioPreset.square],
+
+                      lockAspectRatio: true,
+
+                      hideBottomControls: false,
+                    ),
+
+                    // ======================================================
+                    // iOS
+                    // ======================================================
+                    IOSUiSettings(
+                      title: 'Adjust Photo',
+
+                      cropStyle: CropStyle.circle,
+
+                      aspectRatioPresets: [CropAspectRatioPreset.square],
+
+                      resetAspectRatioEnabled: false,
+                      aspectRatioLockEnabled: true,
+
+                      rotateButtonsHidden: false,
+                      rotateClockwiseButtonHidden: false,
+
+                      doneButtonTitle: 'Done',
+                      cancelButtonTitle: 'Cancel',
+                    ),
+
+                    // ======================================================
+                    // WEB
+                    // ======================================================
+                    WebUiSettings(
+                      context: dialogContext,
+
+                      presentStyle: WebPresentStyle.dialog,
+
+                      barrierColor: Colors.black87,
+
+                      movable: true,
+                      scalable: true,
+                      zoomable: true,
+
+                      zoomOnWheel: true,
+                      zoomOnTouch: true,
+
+                      cropBoxMovable: false,
+                      cropBoxResizable: false,
+
+                      guides: true,
+                      center: true,
+                      highlight: true,
+                      background: true,
+
+                      viewwMode: WebViewMode.mode_2,
+
+                      initialAspectRatio: 1,
+
+                      minCropBoxWidth: 150,
+                      minCropBoxHeight: 150,
+
+                      // IMPORTANT: reduce the cropper size
+                      size: const CropperSize(width: 500, height: 450),
+                    ),
+                  ],
+                );
+
+                // ==========================================================
+                // 3. USER CANCELLED CROPPING
+                // ==========================================================
+
+                if (croppedFile == null) {
+                  return;
+                }
+
+                // ==========================================================
+                // 4. READ CROPPED IMAGE
+                // ==========================================================
+
+                final Uint8List croppedBytes = await croppedFile.readAsBytes();
+
+                if (!dialogContext.mounted) {
+                  return;
+                }
+
+                // ==========================================================
+                // 5. STORE THE ADJUSTED IMAGE
+                // ==========================================================
+
+                setDialogState(() {
+                  selectedImageBytes = croppedBytes;
+                });
+              } catch (e) {
+                debugPrint('Error selecting student image: $e');
+
+                if (!mounted) {
+                  return;
+                }
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to select image: $e')),
                 );
               }
             }
@@ -904,13 +1016,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             // UPLOAD PHOTO
             // ==================================================
 
-            Future<String?> uploadStudentImage(String documentId) async {
-              if (selectedImageBytes == null) {
-                // No new photo selected.
-                // Keep the old photo.
-                return existingData?['profilePhoto']?.toString();
-              }
-
+            Future<String?> uploadStudentImage(
+              String documentId,
+              Uint8List imageBytes,
+            ) async {
               try {
                 final String fileName =
                     '${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -922,7 +1031,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     .child(fileName);
 
                 await storageRef.putData(
-                  selectedImageBytes!,
+                  imageBytes,
                   SettableMetadata(contentType: 'image/jpeg'),
                 );
 
@@ -957,7 +1066,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               try {
                 // ----------------------------------------------
                 // COMMON STUDENT DATA
-                // ----------------------------------------------
+                // -----------------------------we-----------------
 
                 final Map<String, dynamic> studentData = {
                   'firstName': firstNameController.text.trim(),
@@ -980,6 +1089,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                 // ============================================
 
                 if (isEditing) {
+                  final String editingDocId = docId;
+
                   // --------------------------------------------
                   // UPDATE FIRESTORE FIRST
                   // --------------------------------------------
@@ -990,7 +1101,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   // uploaded in the background afterwards.
                   await FirebaseFirestore.instance
                       .collection('user')
-                      .doc(docId)
+                      .doc(editingDocId)
                       .update(studentData);
 
                   final Uint8List? imageBytesToUpload = selectedImageBytes;
@@ -998,12 +1109,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   if (imageBytesToUpload != null) {
                     // Start the optional photo upload without blocking
                     // the Save button.
-                    // ignore: unnecessary_non_null_assertion
-                    uploadStudentImage(docId!).then((imageUrl) async {
+                    uploadStudentImage(editingDocId, imageBytesToUpload).then((
+                      imageUrl,
+                    ) async {
                       if (imageUrl != null && imageUrl.isNotEmpty) {
                         await FirebaseFirestore.instance
                             .collection('user')
-                            .doc(docId)
+                            .doc(editingDocId)
                             .update({
                               'profilePhoto': imageUrl,
                               'updatedAt': FieldValue.serverTimestamp(),
@@ -1092,8 +1204,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   // The Save button must finish immediately instead
                   // of staying on a loading spinner while Storage
                   // uploads the optional image.
-                  if (selectedImageBytes != null) {
-                    uploadStudentImage(newStudentRef.id).then((imageUrl) async {
+                  final Uint8List? imageBytesToUpload = selectedImageBytes;
+
+                  if (imageBytesToUpload != null) {
+                    uploadStudentImage(
+                      newStudentRef.id,
+                      imageBytesToUpload,
+                    ).then((imageUrl) async {
                       if (imageUrl != null && imageUrl.isNotEmpty) {
                         await newStudentRef.update({
                           'profilePhoto': imageUrl,
@@ -1181,14 +1298,16 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             // EXISTING FIREBASE PHOTO
             // --------------------------------------------------
             else if (existingImageUrl != null &&
-                existingImageUrl!.trim().isNotEmpty) {
+                existingImageUrl.trim().isNotEmpty) {
+              final String existingPhotoUrl = existingImageUrl.trim();
+
               photoPreview = ClipOval(
                 child: SizedBox(
                   width: 110,
                   height: 110,
 
                   child: Image.network(
-                    existingImageUrl!,
+                    existingPhotoUrl,
 
                     width: 110,
                     height: 110,
@@ -1308,15 +1427,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         ),
 
                         const Text(
-                          'Student Photo (Optional)',
+                          'Student Photo',
                           style: TextStyle(color: textSecondary, fontSize: 13),
-                        ),
-
-                        const SizedBox(height: 2),
-
-                        const Text(
-                          'All other fields are required',
-                          style: TextStyle(color: textSecondary, fontSize: 11),
                         ),
 
                         const SizedBox(height: 20),
@@ -1354,11 +1466,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                             readOnly: true,
                             style: const TextStyle(
                               color: Colors.white,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                             decoration: InputDecoration(
                               labelText: 'Student ID',
-                              helperText: 'Automatically generated',
                               helperStyle: const TextStyle(
                                 color: textSecondary,
                               ),
@@ -1379,7 +1491,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 10),
                         ],
 
                         // ======================================
@@ -1405,35 +1517,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                             if (!emailRegex.hasMatch(email)) {
                               return 'Enter a valid email address';
-                            }
-
-                            return null;
-                          },
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // ======================================
-                        // PHONE
-                        // ======================================
-                        _buildRequiredTextField(
-                          label: 'Phone',
-
-                          controller: phoneController,
-
-                          keyboardType: TextInputType.phone,
-
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Phone is required';
-                            }
-
-                            final phone = value.trim();
-
-                            final phoneRegex = RegExp(r'^[0-9]{10}$');
-
-                            if (!phoneRegex.hasMatch(phone)) {
-                              return 'Enter a valid 10-digit phone number';
                             }
 
                             return null;
@@ -1713,9 +1796,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   String _generateStudentId() {
     final Random random = Random();
 
-    // Six random digits: 100000 - 999999.
+    // Eight random digits: 10000000 - 99999999.
     // Example: SZYD-STD-483721
-    final int number = 100000 + random.nextInt(900000);
+    final int number = 10000000 + random.nextInt(90000000);
 
     return 'SZYD-STD-$number';
   }
