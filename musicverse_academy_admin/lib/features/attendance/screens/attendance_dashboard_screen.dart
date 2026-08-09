@@ -40,21 +40,29 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
         '${_selectedDate.day.toString().padLeft(2, '0')}';
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: bgColor,
+
       appBar: AppBar(
         backgroundColor: cardColor,
         elevation: 0,
+
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => context.go('/dashboard'),
         ),
+
         title: const Text(
           'Attendance Management',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
+
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
@@ -64,417 +72,683 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
           const SizedBox(width: 8),
         ],
       ),
+
+      // ============================================================
+      // FIRST: READ ALL STUDENTS FROM USER COLLECTION
+      // ============================================================
       body: StreamBuilder<QuerySnapshot>(
-        // IMPORTANT:
-        // Attendance is now stored as ONE document per student.
-        stream: FirebaseFirestore.instance.collection('attendance').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+        stream: FirebaseFirestore.instance.collection('user').snapshots(),
+
+        builder: (context, userSnapshot) {
+          if (userSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(color: primaryColor),
             );
           }
 
-          if (snapshot.hasError) {
+          if (userSnapshot.hasError) {
             return const Center(
               child: Text(
-                'Unable to load attendance records.',
+                'Unable to load students.',
                 style: TextStyle(color: errorColor),
               ),
             );
           }
 
-          final docs = snapshot.data?.docs ?? [];
+          final userDocs = userSnapshot.data?.docs ?? [];
 
-          int totalStudents = docs.length;
-          int presentCount = 0;
-          int absentCount = 0;
-          int pendingCount = 0;
+          // ============================================================
+          // SECOND: READ ATTENDANCE COLLECTION
+          //
+          // Existing attendance documents are merged with the students
+          // from the user collection.
+          // ============================================================
 
-          final List<String> availableCourseList = [];
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('attendance')
+                .snapshots(),
 
-          for (final doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
+            builder: (context, attendanceSnapshot) {
+              if (attendanceSnapshot.connectionState ==
+                  ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: primaryColor),
+                );
+              }
 
-            final status = _statusForSelectedDate(data);
+              if (attendanceSnapshot.hasError) {
+                return const Center(
+                  child: Text(
+                    'Unable to load attendance records.',
+                    style: TextStyle(color: errorColor),
+                  ),
+                );
+              }
 
-            if (status == 'Present') {
-              presentCount++;
-            } else if (status == 'Absent') {
-              absentCount++;
-            } else {
-              pendingCount++;
-            }
+              final attendanceDocs = attendanceSnapshot.data?.docs ?? [];
 
-            final course = (data['course'] ?? '').toString().trim();
-            if (course.isNotEmpty && !availableCourseList.contains(course)) {
-              availableCourseList.add(course);
-            }
-          }
+              // ========================================================
+              // CREATE ATTENDANCE LOOKUP
+              //
+              // Existing attendance records are matched using:
+              // studentId
+              //
+              // This means the existing attendance documents continue
+              // working even if their document ID is different from
+              // the user document ID.
+              // ========================================================
 
-          availableCourseList.sort(
-            (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
-          );
+              final Map<String, QueryDocumentSnapshot> attendanceByStudentId =
+                  {};
 
-          final List<String> availableCourses = ['All', ...availableCourseList];
+              for (final attendanceDoc in attendanceDocs) {
+                final data = attendanceDoc.data() as Map<String, dynamic>;
 
-          final double attendancePercentage = totalStudents > 0
-              ? (presentCount / totalStudents) * 100
-              : 0.0;
+                final String studentId = (data['studentId'] ?? '')
+                    .toString()
+                    .trim();
 
-          final filteredDocs = docs.where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
+                if (studentId.isNotEmpty) {
+                  attendanceByStudentId[studentId] = attendanceDoc;
+                }
+              }
 
-            final studentName = (data['studentName'] ?? '')
-                .toString()
-                .toLowerCase();
+              // ========================================================
+              // MERGE USER + ATTENDANCE
+              //
+              // EVERY USER IS SHOWN.
+              //
+              // If attendance doesn't exist:
+              // - status = Pending
+              // - presentDays = 0
+              // - absentDays = 0
+              // ========================================================
 
-            final firstName = (data['firstName'] ?? '')
-                .toString()
-                .toLowerCase();
+              final List<Map<String, dynamic>> mergedStudents = [];
 
-            final lastName = (data['lastName'] ?? '').toString().toLowerCase();
+              for (final userDoc in userDocs) {
+                final userData = userDoc.data() as Map<String, dynamic>;
 
-            final studentId = (data['studentId'] ?? '')
-                .toString()
-                .toLowerCase();
+                final String studentId = (userData['studentId'] ?? '')
+                    .toString()
+                    .trim();
 
-            final email = (data['email'] ?? '').toString().toLowerCase();
+                QueryDocumentSnapshot? attendanceDoc;
 
-            final phone = (data['phone'] ?? data['phoneNumber'] ?? '')
-                .toString()
-                .toLowerCase();
+                if (studentId.isNotEmpty) {
+                  attendanceDoc = attendanceByStudentId[studentId];
+                }
 
-            final course = (data['course'] ?? '').toString();
+                final Map<String, dynamic> mergedData =
+                    Map<String, dynamic>.from(userData);
 
-            final status = _statusForSelectedDate(data);
+                // --------------------------------------------------------
+                // USER DOCUMENT ID
+                // --------------------------------------------------------
 
-            final fullName = '$firstName $lastName'.trim();
+                mergedData['_userDocId'] = userDoc.id;
 
-            final matchesSearch =
-                _searchQuery.isEmpty ||
-                studentName.contains(_searchQuery) ||
-                fullName.contains(_searchQuery) ||
-                studentId.contains(_searchQuery) ||
-                email.contains(_searchQuery) ||
-                phone.contains(_searchQuery) ||
-                course.toLowerCase().contains(_searchQuery);
+                // --------------------------------------------------------
+                // ATTENDANCE DOCUMENT
+                // --------------------------------------------------------
 
-            final matchesStatus =
-                _selectedStatusFilter == 'All' ||
-                status == _selectedStatusFilter;
+                if (attendanceDoc != null) {
+                  final attendanceData =
+                      attendanceDoc.data() as Map<String, dynamic>;
 
-            final matchesCourse =
-                _selectedCourseFilter == 'All' ||
-                course == _selectedCourseFilter;
+                  mergedData.addAll(attendanceData);
 
-            return matchesSearch && matchesStatus && matchesCourse;
-          }).toList();
+                  mergedData['_attendanceDocId'] = attendanceDoc.id;
 
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final bool isDesktop = constraints.maxWidth > 900;
+                  mergedData['_hasAttendanceDocument'] = true;
+                } else {
+                  // ------------------------------------------------------
+                  // NO ATTENDANCE DOCUMENT YET
+                  // ------------------------------------------------------
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mergedData['_attendanceDocId'] = userDoc.id;
+
+                  mergedData['_hasAttendanceDocument'] = false;
+
+                  mergedData['presentDays'] = 0;
+
+                  mergedData['absentDays'] = 0;
+
+                  mergedData['totalDays'] = 0;
+
+                  mergedData['attendancePercentage'] = 0.0;
+
+                  mergedData['attendanceHistory'] = <String, dynamic>{};
+                }
+
+                // --------------------------------------------------------
+                // ALWAYS USE LATEST STUDENT INFORMATION FROM USER
+                //
+                // This ensures newly added/edited students appear
+                // correctly in Attendance.
+                // --------------------------------------------------------
+
+                mergedData['studentId'] =
+                    userData['studentId'] ?? mergedData['studentId'] ?? '';
+
+                mergedData['firstName'] =
+                    userData['firstName'] ?? mergedData['firstName'] ?? '';
+
+                mergedData['lastName'] =
+                    userData['lastName'] ?? mergedData['lastName'] ?? '';
+
+                mergedData['course'] =
+                    userData['course'] ?? mergedData['course'] ?? '';
+
+                mergedData['phone'] =
+                    userData['phone'] ?? mergedData['phone'] ?? '';
+
+                mergedData['email'] =
+                    userData['email'] ?? mergedData['email'] ?? '';
+
+                mergedData['profilePhoto'] =
+                    userData['profilePhoto'] ??
+                    mergedData['profilePhoto'] ??
+                    '';
+
+                // Create full name if attendance document doesn't
+                // already have one.
+                if ((mergedData['studentName'] ?? '')
+                    .toString()
+                    .trim()
+                    .isEmpty) {
+                  mergedData['studentName'] =
+                      '${mergedData['firstName'] ?? ''} '
+                              '${mergedData['lastName'] ?? ''}'
+                          .trim();
+                }
+
+                mergedStudents.add(mergedData);
+              }
+
+              // ============================================================
+              // STATISTICS
+              // ============================================================
+
+              int totalStudents = mergedStudents.length;
+
+              int presentCount = 0;
+              int absentCount = 0;
+              int pendingCount = 0;
+
+              final List<String> availableCourseList = [];
+
+              for (final data in mergedStudents) {
+                final String status = _statusForSelectedDate(data);
+
+                if (status == 'Present') {
+                  presentCount++;
+                } else if (status == 'Absent') {
+                  absentCount++;
+                } else {
+                  pendingCount++;
+                }
+
+                final String course = (data['course'] ?? '').toString().trim();
+
+                if (course.isNotEmpty &&
+                    !availableCourseList.contains(course)) {
+                  availableCourseList.add(course);
+                }
+              }
+
+              availableCourseList.sort(
+                (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+              );
+
+              final List<String> availableCourses = [
+                'All',
+                ...availableCourseList,
+              ];
+
+              final double attendancePercentage = totalStudents > 0
+                  ? (presentCount / totalStudents) * 100
+                  : 0.0;
+
+              // ============================================================
+              // FILTER
+              // ============================================================
+
+              final filteredStudents = mergedStudents.where((data) {
+                final String studentName = (data['studentName'] ?? '')
+                    .toString()
+                    .toLowerCase();
+
+                final String firstName = (data['firstName'] ?? '')
+                    .toString()
+                    .toLowerCase();
+
+                final String lastName = (data['lastName'] ?? '')
+                    .toString()
+                    .toLowerCase();
+
+                final String studentId = (data['studentId'] ?? '')
+                    .toString()
+                    .toLowerCase();
+
+                final String email = (data['email'] ?? '')
+                    .toString()
+                    .toLowerCase();
+
+                final String phone =
+                    (data['phone'] ?? data['phoneNumber'] ?? '')
+                        .toString()
+                        .toLowerCase();
+
+                final String course = (data['course'] ?? '').toString();
+
+                final String status = _statusForSelectedDate(data);
+
+                final String fullName = '$firstName $lastName'.trim();
+
+                final bool matchesSearch =
+                    _searchQuery.isEmpty ||
+                    studentName.contains(_searchQuery) ||
+                    fullName.contains(_searchQuery) ||
+                    studentId.contains(_searchQuery) ||
+                    email.contains(_searchQuery) ||
+                    phone.contains(_searchQuery) ||
+                    course.toLowerCase().contains(_searchQuery);
+
+                final bool matchesStatus =
+                    _selectedStatusFilter == 'All' ||
+                    status == _selectedStatusFilter;
+
+                final bool matchesCourse =
+                    _selectedCourseFilter == 'All' ||
+                    course == _selectedCourseFilter;
+
+                return matchesSearch && matchesStatus && matchesCourse;
+              }).toList();
+
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool isDesktop = constraints.maxWidth > 900;
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+
                       children: [
-                        const Text(
-                          'Manage and monitor daily student attendance.',
-                          style: TextStyle(color: textSecondary, fontSize: 14),
-                        ),
-                        _buildDateSelector(),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
+                        // ==================================================
+                        // HEADER
+                        // ==================================================
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
 
-                    // SUMMARY CARDS
-                    GridView.count(
-                      crossAxisCount: constraints.maxWidth > 1200
-                          ? 5
-                          : (constraints.maxWidth > 700 ? 3 : 2),
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      childAspectRatio: 1.5,
-                      children: [
-                        _buildStatCard(
-                          'Total Students',
-                          totalStudents.toString(),
-                          primaryColor,
-                          Icons.people,
-                        ),
-                        _buildStatCard(
-                          'Present',
-                          presentCount.toString(),
-                          successColor,
-                          Icons.check_circle,
-                        ),
-                        _buildStatCard(
-                          'Absent',
-                          absentCount.toString(),
-                          errorColor,
-                          Icons.cancel,
-                        ),
-                        _buildStatCard(
-                          'Pending',
-                          pendingCount.toString(),
-                          warningColor,
-                          Icons.pending,
-                        ),
-                        _buildStatCard(
-                          'Attendance',
-                          '${attendancePercentage.toStringAsFixed(1)}%',
-                          primaryColor,
-                          Icons.analytics,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 28),
-
-                    // SEARCH + FILTERS
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        SizedBox(
-                          width: isDesktop ? 300 : double.infinity,
-                          child: TextField(
-                            controller: _searchController,
-                            style: const TextStyle(color: Colors.white),
-                            onChanged: (value) {
-                              setState(() {
-                                _searchQuery = value.trim().toLowerCase();
-                              });
-                            },
-                            decoration: InputDecoration(
-                              hintText: 'Search student name, ID...',
-                              hintStyle: const TextStyle(color: textSecondary),
-                              prefixIcon: const Icon(
-                                Icons.search,
+                          children: [
+                            const Text(
+                              'Manage and monitor daily student attendance.',
+                              style: TextStyle(
                                 color: textSecondary,
-                              ),
-                              suffixIcon: _searchQuery.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(
-                                        Icons.clear,
-                                        color: textSecondary,
-                                      ),
-                                      onPressed: () {
-                                        _searchController.clear();
-                                        setState(() {
-                                          _searchQuery = '';
-                                        });
-                                      },
-                                    )
-                                  : null,
-                              filled: true,
-                              fillColor: cardColor,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none,
+                                fontSize: 14,
                               ),
                             ),
-                          ),
-                        ),
-                        _buildDropdownFilter(
-                          'Status',
-                          _selectedStatusFilter,
-                          const ['All', 'Present', 'Absent', 'Pending'],
-                          (value) {
-                            setState(() {
-                              _selectedStatusFilter = value ?? 'All';
-                            });
-                          },
-                        ),
-                        _buildDropdownFilter(
-                          'Course',
-                          _selectedCourseFilter,
-                          availableCourses,
-                          (value) {
-                            setState(() {
-                              _selectedCourseFilter = value ?? 'All';
-                            });
-                          },
-                        ),
-                      ],
-                    ),
 
-                    const SizedBox(height: 24),
+                            _buildDateSelector(),
+                          ],
+                        ),
 
-                    // STUDENT LIST
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: cardColor,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: filteredDocs.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(40),
-                              child: Center(
-                                child: Text(
-                                  'No students match your search.',
-                                  style: TextStyle(
+                        const SizedBox(height: 24),
+
+                        // ==================================================
+                        // SUMMARY CARDS
+                        // ==================================================
+                        GridView.count(
+                          crossAxisCount: constraints.maxWidth > 1200
+                              ? 5
+                              : (constraints.maxWidth > 700 ? 3 : 2),
+
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+
+                          shrinkWrap: true,
+
+                          physics: const NeverScrollableScrollPhysics(),
+
+                          childAspectRatio: 1.5,
+
+                          children: [
+                            _buildStatCard(
+                              'Total Students',
+                              totalStudents.toString(),
+                              primaryColor,
+                              Icons.people,
+                            ),
+
+                            _buildStatCard(
+                              'Present',
+                              presentCount.toString(),
+                              successColor,
+                              Icons.check_circle,
+                            ),
+
+                            _buildStatCard(
+                              'Absent',
+                              absentCount.toString(),
+                              errorColor,
+                              Icons.cancel,
+                            ),
+
+                            _buildStatCard(
+                              'Pending',
+                              pendingCount.toString(),
+                              warningColor,
+                              Icons.pending,
+                            ),
+
+                            _buildStatCard(
+                              'Attendance',
+                              '${attendancePercentage.toStringAsFixed(1)}%',
+                              primaryColor,
+                              Icons.analytics,
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 28),
+
+                        // ==================================================
+                        // SEARCH + FILTERS
+                        // ==================================================
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+
+                          children: [
+                            SizedBox(
+                              width: isDesktop ? 300 : double.infinity,
+
+                              child: TextField(
+                                controller: _searchController,
+
+                                style: const TextStyle(color: Colors.white),
+
+                                onChanged: (value) {
+                                  setState(() {
+                                    _searchQuery = value.trim().toLowerCase();
+                                  });
+                                },
+
+                                decoration: InputDecoration(
+                                  hintText: 'Search student name, ID...',
+
+                                  hintStyle: const TextStyle(
                                     color: textSecondary,
-                                    fontSize: 16,
+                                  ),
+
+                                  prefixIcon: const Icon(
+                                    Icons.search,
+                                    color: textSecondary,
+                                  ),
+
+                                  suffixIcon: _searchQuery.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(
+                                            Icons.clear,
+                                            color: textSecondary,
+                                          ),
+
+                                          onPressed: () {
+                                            _searchController.clear();
+
+                                            setState(() {
+                                              _searchQuery = '';
+                                            });
+                                          },
+                                        )
+                                      : null,
+
+                                  filled: true,
+
+                                  fillColor: cardColor,
+
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+
+                                    borderSide: BorderSide.none,
                                   ),
                                 ),
                               ),
-                            )
-                          : ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: filteredDocs.length,
-                              separatorBuilder: (context, index) =>
-                                  const Divider(
-                                    color: Colors.white12,
-                                    height: 1,
-                                  ),
-                              itemBuilder: (context, index) {
-                                final doc = filteredDocs[index];
-                                final data = doc.data() as Map<String, dynamic>;
+                            ),
 
-                                final String studentName = _getStudentName(
-                                  data,
-                                );
+                            _buildDropdownFilter(
+                              'Status',
+                              _selectedStatusFilter,
+                              const ['All', 'Present', 'Absent', 'Pending'],
+                              (value) {
+                                setState(() {
+                                  _selectedStatusFilter = value ?? 'All';
+                                });
+                              },
+                            ),
 
-                                final String studentId =
-                                    (data['studentId'] ?? 'N/A').toString();
+                            _buildDropdownFilter(
+                              'Course',
+                              _selectedCourseFilter,
+                              availableCourses,
+                              (value) {
+                                setState(() {
+                                  _selectedCourseFilter = value ?? 'All';
+                                });
+                              },
+                            ),
+                          ],
+                        ),
 
-                                final String course =
-                                    (data['course'] ?? 'General').toString();
+                        const SizedBox(height: 24),
 
-                                final String status = _statusForSelectedDate(
-                                  data,
-                                );
+                        // ==================================================
+                        // STUDENT LIST
+                        // ==================================================
+                        Container(
+                          width: double.infinity,
 
-                                final int presentDays = _toInt(
-                                  data['presentDays'],
-                                );
+                          decoration: BoxDecoration(
+                            color: cardColor,
 
-                                final int absentDays = _toInt(
-                                  data['absentDays'],
-                                );
+                            borderRadius: BorderRadius.circular(12),
+                          ),
 
-                                final String profilePhoto =
-                                    (data['profilePhoto'] ?? '').toString();
+                          child: filteredStudents.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.all(40),
 
-                                final Color statusColor = status == 'Present'
-                                    ? successColor
-                                    : (status == 'Absent'
-                                          ? errorColor
-                                          : warningColor);
-
-                                return ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  leading: profilePhoto.isNotEmpty
-                                      ? CircleAvatar(
-                                          backgroundImage: NetworkImage(
-                                            profilePhoto,
-                                          ),
-                                        )
-                                      : const CircleAvatar(
-                                          backgroundColor: primaryColor,
-                                          child: Icon(
-                                            Icons.person,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                  title: Text(
-                                    studentName.isEmpty
-                                        ? 'Unnamed Student'
-                                        : studentName,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
+                                  child: Center(
+                                    child: Text(
+                                      'No students match your search.',
+                                      style: TextStyle(
+                                        color: textSecondary,
+                                        fontSize: 16,
+                                      ),
                                     ),
                                   ),
-                                  subtitle: Text(
-                                    'ID: $studentId • Course: $course • '
-                                    'Present: $presentDays | '
-                                    'Absent: $absentDays',
-                                    style: const TextStyle(
-                                      color: textSecondary,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Chip(
-                                        label: Text(
-                                          status,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.white,
+                                )
+                              : ListView.separated(
+                                  shrinkWrap: true,
+
+                                  physics: const NeverScrollableScrollPhysics(),
+
+                                  itemCount: filteredStudents.length,
+
+                                  separatorBuilder: (context, index) =>
+                                      const Divider(
+                                        color: Colors.white12,
+                                        height: 1,
+                                      ),
+
+                                  itemBuilder: (context, index) {
+                                    final data = filteredStudents[index];
+
+                                    final String studentName = _getStudentName(
+                                      data,
+                                    );
+
+                                    final String studentId =
+                                        (data['studentId'] ?? 'N/A').toString();
+
+                                    final String course =
+                                        (data['course'] ?? 'General')
+                                            .toString();
+
+                                    final String status =
+                                        _statusForSelectedDate(data);
+
+                                    final int presentDays = _toInt(
+                                      data['presentDays'],
+                                    );
+
+                                    final int absentDays = _toInt(
+                                      data['absentDays'],
+                                    );
+
+                                    final String profilePhoto =
+                                        (data['profilePhoto'] ?? '').toString();
+
+                                    final Color statusColor =
+                                        status == 'Present'
+                                        ? successColor
+                                        : (status == 'Absent'
+                                              ? errorColor
+                                              : warningColor);
+
+                                    return ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
                                           ),
-                                        ),
-                                        backgroundColor: statusColor.withValues(
-                                          alpha: 0.2,
+
+                                      leading: profilePhoto.isNotEmpty
+                                          ? CircleAvatar(
+                                              backgroundImage: NetworkImage(
+                                                profilePhoto,
+                                              ),
+                                            )
+                                          : const CircleAvatar(
+                                              backgroundColor: primaryColor,
+
+                                              child: Icon(
+                                                Icons.person,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+
+                                      title: Text(
+                                        studentName.isEmpty
+                                            ? 'Unnamed Student'
+                                            : studentName,
+
+                                        style: const TextStyle(
+                                          color: Colors.white,
+
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      const SizedBox(width: 12),
-                                      PopupMenuButton<String>(
-                                        icon: const Icon(
-                                          Icons.edit_calendar,
+
+                                      subtitle: Text(
+                                        'ID: $studentId • '
+                                        'Course: $course • '
+                                        'Present: $presentDays | '
+                                        'Absent: $absentDays',
+
+                                        style: const TextStyle(
                                           color: textSecondary,
+                                          fontSize: 13,
                                         ),
-                                        color: cardColor,
-                                        onSelected: (newStatus) {
-                                          _updateAttendanceStatus(
-                                            doc.id,
-                                            data,
-                                            newStatus,
-                                          );
-                                        },
-                                        itemBuilder: (context) => [
-                                          const PopupMenuItem(
-                                            value: 'Present',
-                                            child: Text(
-                                              'Mark Present',
-                                              style: TextStyle(
-                                                color: successColor,
+                                      ),
+
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+
+                                        children: [
+                                          Chip(
+                                            label: Text(
+                                              status,
+
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.white,
                                               ),
                                             ),
+
+                                            backgroundColor: statusColor
+                                                .withValues(alpha: 0.2),
                                           ),
-                                          const PopupMenuItem(
-                                            value: 'Absent',
-                                            child: Text(
-                                              'Mark Absent',
-                                              style: TextStyle(
-                                                color: errorColor,
-                                              ),
+
+                                          const SizedBox(width: 12),
+
+                                          PopupMenuButton<String>(
+                                            icon: const Icon(
+                                              Icons.edit_calendar,
+                                              color: textSecondary,
                                             ),
-                                          ),
-                                          const PopupMenuItem(
-                                            value: 'Pending',
-                                            child: Text(
-                                              'Mark Pending',
-                                              style: TextStyle(
-                                                color: warningColor,
+
+                                            color: cardColor,
+
+                                            onSelected: (newStatus) {
+                                              _updateAttendanceStatus(
+                                                data,
+                                                newStatus,
+                                              );
+                                            },
+
+                                            itemBuilder: (context) => [
+                                              const PopupMenuItem(
+                                                value: 'Present',
+
+                                                child: Text(
+                                                  'Mark Present',
+
+                                                  style: TextStyle(
+                                                    color: successColor,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
+
+                                              const PopupMenuItem(
+                                                value: 'Absent',
+
+                                                child: Text(
+                                                  'Mark Absent',
+
+                                                  style: TextStyle(
+                                                    color: errorColor,
+                                                  ),
+                                                ),
+                                              ),
+
+                                              const PopupMenuItem(
+                                                value: 'Pending',
+
+                                                child: Text(
+                                                  'Mark Pending',
+
+                                                  style: TextStyle(
+                                                    color: warningColor,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               );
             },
           );
@@ -483,18 +757,18 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // ATTENDANCE HELPERS
-  // ---------------------------------------------------------------------------
+  // ============================================================
+  // ATTENDANCE STATUS FOR SELECTED DATE
+  // ============================================================
 
   String _statusForSelectedDate(Map<String, dynamic> data) {
-    final history = data['attendanceHistory'];
+    final dynamic historyData = data['attendanceHistory'];
 
-    if (history is Map) {
-      final value = history[_formattedDateKey];
+    if (historyData is Map) {
+      final dynamic value = historyData[_formattedDateKey];
 
       if (value != null) {
-        final status = value.toString().toLowerCase();
+        final String status = value.toString().toLowerCase();
 
         if (status == 'present') {
           return 'Present';
@@ -509,18 +783,27 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     return 'Pending';
   }
 
+  // ============================================================
+  // GET STUDENT NAME
+  // ============================================================
+
   String _getStudentName(Map<String, dynamic> data) {
-    final studentName = (data['studentName'] ?? '').toString().trim();
+    final String studentName = (data['studentName'] ?? '').toString().trim();
 
     if (studentName.isNotEmpty) {
       return studentName;
     }
 
-    final firstName = (data['firstName'] ?? '').toString().trim();
-    final lastName = (data['lastName'] ?? '').toString().trim();
+    final String firstName = (data['firstName'] ?? '').toString().trim();
+
+    final String lastName = (data['lastName'] ?? '').toString().trim();
 
     return '$firstName $lastName'.trim();
   }
+
+  // ============================================================
+  // NUMBER CONVERSION
+  // ============================================================
 
   int _toInt(dynamic value) {
     if (value is int) {
@@ -534,6 +817,10 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  // ============================================================
+  // CALCULATE ATTENDANCE %
+  // ============================================================
+
   double _calculatePercentage(int presentDays, int totalDays) {
     if (totalDays <= 0) {
       return 0.0;
@@ -542,70 +829,151 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     return (presentDays / totalDays) * 100;
   }
 
-  // ---------------------------------------------------------------------------
+  // ============================================================
   // DATE SELECTOR
-  // ---------------------------------------------------------------------------
+  // ============================================================
 
   Widget _buildDateSelector() {
+    // Get today's date without the current time.
+    final DateTime today = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+
+    // Make sure the selected date does not contain a time component.
+    final DateTime selectedDateOnly = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+    );
+
+    // Check whether the selected date is today.
+    final bool isToday = selectedDateOnly == today;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+
       decoration: BoxDecoration(
         color: cardColor,
+
         borderRadius: BorderRadius.circular(8),
+
         border: Border.all(color: primaryColor.withValues(alpha: 0.4)),
       ),
+
       child: Row(
         mainAxisSize: MainAxisSize.min,
+
         children: [
+          // ========================================================
+          // PREVIOUS DAY
+          //
+          // Admin can go backward to any past date.
+          // ========================================================
           IconButton(
             icon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
+
             onPressed: () {
               setState(() {
-                _selectedDate = _selectedDate.subtract(const Duration(days: 1));
+                _selectedDate = selectedDateOnly.subtract(
+                  const Duration(days: 1),
+                );
               });
             },
           ),
+
+          // ========================================================
+          // DATE
+          // ========================================================
           InkWell(
             onTap: () async {
               final DateTime? picked = await showDatePicker(
                 context: context,
-                initialDate: _selectedDate,
+
+                // Current selected date.
+                initialDate: selectedDateOnly.isAfter(today)
+                    ? today
+                    : selectedDateOnly,
+
+                // Keep your existing starting date.
                 firstDate: DateTime(2025, 1, 1),
-                lastDate: DateTime(2030, 12, 31),
+
+                // IMPORTANT:
+                // Today is the maximum selectable date.
+                // Future dates cannot be selected.
+                lastDate: today,
               );
 
               if (picked != null) {
+                // Extra safety check.
+                // Never allow a future date.
+                if (picked.isAfter(today)) {
+                  return;
+                }
+
                 setState(() {
-                  _selectedDate = picked;
+                  _selectedDate = DateTime(
+                    picked.year,
+                    picked.month,
+                    picked.day,
+                  );
                 });
               }
             },
+
             child: Text(
-              '${_selectedDate.day} '
-              '${_getMonthName(_selectedDate.month)}, '
-              '${_selectedDate.year}',
+              '${selectedDateOnly.day} '
+              '${_getMonthName(selectedDateOnly.month)}, '
+              '${selectedDateOnly.year}',
+
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
+
+          // ========================================================
+          // NEXT DAY
+          //
+          // Disabled when the selected date is today.
+          // Therefore admin cannot move into tomorrow/future.
+          // ========================================================
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.chevron_right,
-              color: Colors.white,
+              color: isToday ? Colors.white24 : Colors.white,
               size: 20,
             ),
-            onPressed: () {
-              setState(() {
-                _selectedDate = _selectedDate.add(const Duration(days: 1));
-              });
-            },
+
+            // null disables the button.
+            onPressed: isToday
+                ? null
+                : () {
+                    final DateTime nextDate = selectedDateOnly.add(
+                      const Duration(days: 1),
+                    );
+
+                    // Extra safety:
+                    // Do not allow the next date if it is future.
+                    if (nextDate.isAfter(today)) {
+                      return;
+                    }
+
+                    setState(() {
+                      _selectedDate = nextDate;
+                    });
+                  },
           ),
         ],
       ),
     );
   }
+
+  // ============================================================
+  // MONTH
+  // ============================================================
 
   String _getMonthName(int month) {
     const months = [
@@ -626,9 +994,9 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     return months[month - 1];
   }
 
-  // ---------------------------------------------------------------------------
+  // ============================================================
   // STAT CARD
-  // ---------------------------------------------------------------------------
+  // ============================================================
 
   Widget _buildStatCard(
     String title,
@@ -638,28 +1006,40 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   ) {
     return Container(
       padding: const EdgeInsets.all(16),
+
       decoration: BoxDecoration(
         color: cardColor,
+
         borderRadius: BorderRadius.circular(12),
+
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
+
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+
         mainAxisAlignment: MainAxisAlignment.center,
+
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
             children: [
               Text(
                 title,
+
                 style: const TextStyle(color: textSecondary, fontSize: 13),
               ),
+
               Icon(icon, color: color, size: 20),
             ],
           ),
+
           const SizedBox(height: 8),
+
           Text(
             value,
+
             style: TextStyle(
               color: color,
               fontSize: 24,
@@ -671,9 +1051,9 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ============================================================
   // DROPDOWN
-  // ---------------------------------------------------------------------------
+  // ============================================================
 
   Widget _buildDropdownFilter(
     String label,
@@ -683,47 +1063,50 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
+
       decoration: BoxDecoration(
         color: cardColor,
+
         borderRadius: BorderRadius.circular(8),
       ),
+
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: items.contains(currentVal) ? currentVal : items.first,
+
           dropdownColor: cardColor,
+
           style: const TextStyle(color: Colors.white, fontSize: 14),
+
           icon: const Icon(Icons.arrow_drop_down, color: textSecondary),
+
           items: items
               .map(
                 (item) =>
                     DropdownMenuItem(value: item, child: Text('$label: $item')),
               )
               .toList(),
+
           onChanged: onChanged,
         ),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // UPDATE ONE STUDENT'S ATTENDANCE
+  // ============================================================
+  // UPDATE ATTENDANCE
   //
-  // IMPORTANT:
-  // There is ONE attendance document per student.
+  // ONE DOCUMENT PER STUDENT.
   //
-  // Example:
-  // attendance/studentUid_001
+  // Existing document:
+  // attendance/<existingDocumentId>
   //
-  // attendanceHistory:
-  // 2026-08-05: present
-  // 2026-08-06: absent
-  // 2026-08-08: present
+  // New student:
+  // attendance/<userDocumentId>
   //
-  // No new Firestore document is created for every day.
-  // ---------------------------------------------------------------------------
+  // ============================================================
 
   Future<void> _updateAttendanceStatus(
-    String docId,
     Map<String, dynamic> data,
     String newStatus,
   ) async {
@@ -742,15 +1125,18 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     }
 
     int presentDays = _toInt(data['presentDays']);
+
     int absentDays = _toInt(data['absentDays']);
+
     int totalDays = _toInt(data['totalDays']);
 
-    // If a date already has a status, changing Present <-> Absent
-    // must NOT increase totalDays again.
     final bool hadPreviousStatus =
         oldStatus == 'Present' || oldStatus == 'Absent';
 
-    // Remove the previous status from the counters.
+    // ==========================================================
+    // REMOVE OLD STATUS FROM COUNTERS
+    // ==========================================================
+
     if (oldStatus == 'Present') {
       if (presentDays > 0) {
         presentDays--;
@@ -761,7 +1147,10 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
       }
     }
 
-    // Apply the new status.
+    // ==========================================================
+    // APPLY NEW STATUS
+    // ==========================================================
+
     if (newStatus == 'Present') {
       presentDays++;
 
@@ -770,7 +1159,9 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
       }
 
       history[dateKey] = 'present';
-    } else if (newStatus == 'Absent') {
+    }
+    // ==========================================================
+    else if (newStatus == 'Absent') {
       absentDays++;
 
       if (!hadPreviousStatus) {
@@ -778,9 +1169,9 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
       }
 
       history[dateKey] = 'absent';
-    } else {
-      // Pending means no attendance has been recorded for this date.
-      // Therefore remove the date from attendanceHistory.
+    }
+    // ==========================================================
+    else {
       history.remove(dateKey);
 
       if (hadPreviousStatus && totalDays > 0) {
@@ -797,18 +1188,65 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
       totalDays,
     );
 
-    final attendanceRef = FirebaseFirestore.instance
-        .collection('attendance')
-        .doc(docId);
+    // ==========================================================
+    // ATTENDANCE DOCUMENT ID
+    // ==========================================================
 
-    await attendanceRef.update({
+    final String attendanceDocId =
+        (data['_attendanceDocId'] ?? data['_userDocId']).toString();
+
+    final bool hasAttendanceDocument = data['_hasAttendanceDocument'] == true;
+
+    final String studentName = _getStudentName(data);
+
+    final String studentId = (data['studentId'] ?? '').toString();
+
+    final String course = (data['course'] ?? '').toString();
+
+    final String userDocId = (data['_userDocId'] ?? '').toString();
+
+    final DocumentReference attendanceRef = FirebaseFirestore.instance
+        .collection('attendance')
+        .doc(attendanceDocId);
+
+    // ==========================================================
+    // DATA TO SAVE
+    // ==========================================================
+
+    final Map<String, dynamic> attendanceData = {
+      'studentName': studentName,
+
+      'studentId': studentId,
+
+      'course': course,
+
+      'studentUid': userDocId,
+
       'presentDays': presentDays,
+
       'absentDays': absentDays,
+
       'totalDays': totalDays,
+
       'attendancePercentage': attendancePercentage,
+
       'attendanceHistory': history,
+
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    };
+
+    // ==========================================================
+    // CREATE OR UPDATE
+    // ==========================================================
+
+    if (hasAttendanceDocument) {
+      await attendanceRef.update(attendanceData);
+    } else {
+      await attendanceRef.set({
+        ...attendanceData,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
 
     if (!mounted) {
       return;
@@ -823,6 +1261,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
               ? 'Attendance removed for $dateKey.'
               : 'Attendance marked $newStatus for $dateKey.',
         ),
+
         backgroundColor: newStatus == 'Present'
             ? successColor
             : (newStatus == 'Absent' ? errorColor : warningColor),
