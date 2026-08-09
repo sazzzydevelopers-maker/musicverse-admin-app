@@ -1,0 +1,256 @@
+import 'package:flutter/material.dart';
+
+import '../../dashboard/screens/dashboard_screen.dart';
+import '../../students/screens/student_management_screen.dart';
+
+class AdminShell extends StatefulWidget {
+  const AdminShell({super.key});
+
+  @override
+  State<AdminShell> createState() => _AdminShellState();
+}
+
+class _AdminShellState extends State<AdminShell> {
+  int _selectedIndex = 0;
+
+  final List<_AdminNavigationItem> _navigationItems = const [
+    _AdminNavigationItem(title: 'Dashboard', icon: Icons.dashboard_outlined),
+    _AdminNavigationItem(title: 'Students', icon: Icons.people_outline),
+    _AdminNavigationItem(title: 'Teachers', icon: Icons.groups_outlined),
+    _AdminNavigationItem(title: 'Courses', icon: Icons.library_books_outlined),
+    _AdminNavigationItem(title: 'Payments', icon: Icons.credit_card_outlined),
+    _AdminNavigationItem(
+      title: 'Attendance',
+      icon: Icons.calendar_month_outlined,
+    ),
+    _AdminNavigationItem(title: 'Practice', icon: Icons.flag_outlined),
+    _AdminNavigationItem(title: 'Assignments', icon: Icons.assignment_outlined),
+    _AdminNavigationItem(title: 'Quizzes', icon: Icons.quiz_outlined),
+    _AdminNavigationItem(
+      title: 'Certificates',
+      icon: Icons.workspace_premium_outlined,
+    ),
+    _AdminNavigationItem(title: 'Reports', icon: Icons.bar_chart_outlined),
+    _AdminNavigationItem(title: 'Settings', icon: Icons.settings_outlined),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0D1020),
+      body: Row(
+        children: [
+          _buildSidebar(),
+          Expanded(child: _buildMainContent()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebar() {
+    return Container(
+      width: 260,
+      color: const Color(0xFF101326),
+      child: Column(
+        children: [
+          // LOGO
+          const Padding(
+            padding: EdgeInsets.fromLTRB(24, 28, 24, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MusicVerse',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Admin Portal',
+                  style: TextStyle(color: Color(0xFF7C4DFF), fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(color: Color(0xFF252A42), height: 1),
+
+          const SizedBox(height: 18),
+
+          // NAVIGATION
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              itemCount: _navigationItems.length,
+              itemBuilder: (context, index) {
+                final item = _navigationItems[index];
+                final isSelected = _selectedIndex == index;
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () {
+                      setState(() {
+                        _selectedIndex = index;
+                      });
+                    },
+                    child: Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF27204D)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        border: isSelected
+                            ? const Border(
+                                left: BorderSide(
+                                  color: Color(0xFF7C4DFF),
+                                  width: 4,
+                                ),
+                              )
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 16),
+
+                          Icon(
+                            item.icon,
+                            size: 23,
+                            color: isSelected
+                                ? const Color(0xFF7C4DFF)
+                                : const Color(0xFFB0B5D3),
+                          ),
+
+                          const SizedBox(width: 16),
+
+                          Text(
+                            item.title,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : const Color(0xFFB0B5D3),
+                              fontSize: 16,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // FOOTER
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'MusicVerse Academy Admin',
+                style: TextStyle(color: Color(0xFFB0B5D3), fontSize: 13),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainContent() {
+    switch (_selectedIndex) {
+      case 0:
+        return const DashboardScreen();
+
+      case 1:
+        return const StudentManagementScreen();
+
+      case 2:
+        return const _ComingSoonScreen(title: 'Teachers');
+
+      case 3:
+        return const _ComingSoonScreen(title: 'Courses');
+
+      case 4:
+        return const _ComingSoonScreen(title: 'Payments');
+
+      case 5:
+        return const _ComingSoonScreen(title: 'Attendance');
+
+      case 6:
+        return const _ComingSoonScreen(title: 'Practice');
+
+      case 7:
+        return const _ComingSoonScreen(title: 'Assignments');
+
+      case 8:
+        return const _ComingSoonScreen(title: 'Quizzes');
+
+      case 9:
+        return const _ComingSoonScreen(title: 'Certificates');
+
+      case 10:
+        return const _ComingSoonScreen(title: 'Reports');
+
+      case 11:
+        return const _ComingSoonScreen(title: 'Settings');
+
+      default:
+        return const DashboardScreen();
+    }
+  }
+}
+
+class _AdminNavigationItem {
+  final String title;
+  final IconData icon;
+
+  const _AdminNavigationItem({required this.title, required this.icon});
+}
+
+class _ComingSoonScreen extends StatelessWidget {
+  final String title;
+
+  const _ComingSoonScreen({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFF0D1020),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.construction_outlined,
+              color: Color(0xFF7C4DFF),
+              size: 60,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This section is ready for implementation.',
+              style: TextStyle(color: Color(0xFFB0B5D3), fontSize: 15),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
