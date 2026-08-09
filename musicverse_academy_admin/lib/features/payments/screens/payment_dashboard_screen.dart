@@ -15,6 +15,8 @@ class PaymentDashboardScreen extends StatefulWidget {
 }
 
 class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
+  // Automatically opens on the user's current month.
+  // Example: if the current month is October 2026, it opens on October 2026.
   DateTime _selectedMonth = DateTime(
     DateTime.now().year,
     DateTime.now().month,
@@ -1706,44 +1708,112 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
     );
   }
 
+  List<DateTime> _getAvailableMonths() {
+    final now = DateTime.now();
+    final firstMonth = DateTime(2019, 1, 1);
+    final currentMonth = DateTime(now.year, now.month, 1);
+
+    final months = <DateTime>[];
+    DateTime month = firstMonth;
+
+    while (!month.isAfter(currentMonth)) {
+      months.add(month);
+      month = DateTime(month.year, month.month + 1, 1);
+    }
+
+    return months.reversed.toList();
+  }
+
   Widget _buildMonthSelector() {
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month, 1);
+    final availableMonths = _getAvailableMonths();
+
+    // The selected month is always limited to:
+    // January 2019 -> current month.
+    final safeSelectedMonth = _selectedMonth.isAfter(currentMonth)
+        ? currentMonth
+        : _selectedMonth;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      width: 195,
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: primaryColor.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: primaryColor.withValues(alpha: 0.55),
+          width: 1,
+        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<DateTime>(
-          value: _selectedMonth,
+          isExpanded: true,
+          value: availableMonths.contains(safeSelectedMonth)
+              ? safeSelectedMonth
+              : currentMonth,
           dropdownColor: cardColor,
+          menuMaxHeight: 420,
+          icon: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: textSecondary,
+            size: 22,
+          ),
           style: const TextStyle(
             color: Colors.white,
-            fontWeight: FontWeight.bold,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
           ),
-          icon: const Icon(Icons.arrow_drop_down, color: textSecondary),
-          items:
-              [
-                    DateTime(2026, 6, 1),
-                    DateTime(2026, 7, 1),
-                    DateTime(2026, 8, 1),
-                    DateTime(2026, 9, 1),
-                  ]
-                  .map(
-                    (date) => DropdownMenuItem(
-                      value: date,
-                      child: Text(
-                        "${_getMonthName(date.month)} "
-                        "${date.year}",
-                      ),
-                    ),
-                  )
-                  .toList(),
-          onChanged: (val) {
-            if (val != null) {
-              setState(() => _selectedMonth = val);
-            }
+          selectedItemBuilder: (context) {
+            return availableMonths.map((date) {
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '${_getMonthName(date.month)} ${date.year}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              );
+            }).toList();
+          },
+          items: availableMonths.map((date) {
+            final isCurrentMonth =
+                date.year == currentMonth.year &&
+                date.month == currentMonth.month;
+
+            return DropdownMenuItem<DateTime>(
+              value: date,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Text(
+                  '${_getMonthName(date.month)} ${date.year}',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: isCurrentMonth
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+          onChanged: (DateTime? value) {
+            if (value == null) return;
+
+            // Never allow a future month.
+            if (value.isAfter(currentMonth)) return;
+
+            setState(() {
+              _selectedMonth = DateTime(value.year, value.month, 1);
+            });
           },
         ),
       ),
