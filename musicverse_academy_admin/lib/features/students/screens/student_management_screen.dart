@@ -941,35 +941,40 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     // ======================================================
                     WebUiSettings(
                       context: dialogContext,
-
                       presentStyle: WebPresentStyle.dialog,
-
                       barrierColor: Colors.black87,
 
+                      dragMode: WebDragMode.move,
+
+                      // Image controls
                       movable: true,
                       scalable: true,
                       zoomable: true,
+                      rotatable: true,
 
                       zoomOnWheel: true,
                       zoomOnTouch: true,
 
+                      // Fixed crop box
                       cropBoxMovable: false,
                       cropBoxResizable: false,
 
+                      toggleDragModeOnDblclick: false,
+
+                      // UI
                       guides: true,
                       center: true,
                       highlight: true,
                       background: true,
 
+                      // Square crop
                       viewwMode: WebViewMode.mode_2,
-
                       initialAspectRatio: 1,
 
-                      minCropBoxWidth: 150,
-                      minCropBoxHeight: 150,
+                      minCropBoxWidth: 250,
+                      minCropBoxHeight: 250,
 
-                      // IMPORTANT: reduce the cropper size
-                      size: const CropperSize(width: 500, height: 450),
+                      size: const CropperSize(width: 500, height: 350),
                     ),
                   ],
                 );
@@ -1493,7 +1498,31 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                           ),
                           const SizedBox(height: 10),
                         ],
+                        _buildRequiredTextField(
+                          label: 'Phone',
 
+                          controller: phoneController,
+
+                          keyboardType: TextInputType.phone,
+
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Phone is required';
+                            }
+
+                            final phone = value.trim();
+
+                            final phoneRegex = RegExp(r'^[0-9]{10}$');
+
+                            if (!phoneRegex.hasMatch(phone)) {
+                              return 'Enter a valid 10-digit phone number';
+                            }
+
+                            return null;
+                          },
+                        ),
+
+                        const SizedBox(height: 12),
                         // ======================================
                         // EMAIL
                         // ======================================
