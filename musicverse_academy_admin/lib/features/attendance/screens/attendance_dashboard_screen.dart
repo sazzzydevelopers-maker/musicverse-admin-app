@@ -15,7 +15,14 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
   final TextEditingController _searchController = TextEditingController();
 
-  String _searchQuery = '';
+  // ============================================================
+  // SEARCH ONLY
+  // ============================================================
+
+  final FocusNode _searchFocusNode = FocusNode();
+
+  final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>('');
+
   String _selectedStatusFilter = 'All';
   String _selectedCourseFilter = 'All';
 
@@ -31,6 +38,8 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
+    _searchQueryNotifier.dispose();
     super.dispose();
   }
 
@@ -99,9 +108,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
           // ============================================================
           // SECOND: READ ATTENDANCE COLLECTION
-          //
-          // Existing attendance documents are merged with the students
-          // from the user collection.
           // ============================================================
 
           return StreamBuilder<QuerySnapshot>(
@@ -130,13 +136,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
               // ========================================================
               // CREATE ATTENDANCE LOOKUP
-              //
-              // Existing attendance records are matched using:
-              // studentId
-              //
-              // This means the existing attendance documents continue
-              // working even if their document ID is different from
-              // the user document ID.
               // ========================================================
 
               final Map<String, QueryDocumentSnapshot> attendanceByStudentId =
@@ -156,13 +155,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
               // ========================================================
               // MERGE USER + ATTENDANCE
-              //
-              // EVERY USER IS SHOWN.
-              //
-              // If attendance doesn't exist:
-              // - status = Pending
-              // - presentDays = 0
-              // - absentDays = 0
               // ========================================================
 
               final List<Map<String, dynamic>> mergedStudents = [];
@@ -203,10 +195,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                   mergedData['_hasAttendanceDocument'] = true;
                 } else {
-                  // ------------------------------------------------------
-                  // NO ATTENDANCE DOCUMENT YET
-                  // ------------------------------------------------------
-
                   mergedData['_attendanceDocId'] = userDoc.id;
 
                   mergedData['_hasAttendanceDocument'] = false;
@@ -223,10 +211,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                 }
 
                 // --------------------------------------------------------
-                // ALWAYS USE LATEST STUDENT INFORMATION FROM USER
-                //
-                // This ensures newly added/edited students appear
-                // correctly in Attendance.
+                // ALWAYS USE LATEST STUDENT INFORMATION
                 // --------------------------------------------------------
 
                 mergedData['studentId'] =
@@ -252,8 +237,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                     mergedData['profilePhoto'] ??
                     '';
 
-                // Create full name if attendance document doesn't
-                // already have one.
                 if ((mergedData['studentName'] ?? '')
                     .toString()
                     .trim()
@@ -302,70 +285,23 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                 (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
               );
 
+              // ============================================================
+              // COURSE LIST
+              // ============================================================
+
               final List<String> availableCourses = [
                 'All',
-                ...availableCourseList,
+                'Piano',
+                'Violin',
+                'Guitar',
+                'Drums',
+                'Vocal',
+                'Flute',
               ];
 
               final double attendancePercentage = totalStudents > 0
                   ? (presentCount / totalStudents) * 100
                   : 0.0;
-
-              // ============================================================
-              // FILTER
-              // ============================================================
-
-              final filteredStudents = mergedStudents.where((data) {
-                final String studentName = (data['studentName'] ?? '')
-                    .toString()
-                    .toLowerCase();
-
-                final String firstName = (data['firstName'] ?? '')
-                    .toString()
-                    .toLowerCase();
-
-                final String lastName = (data['lastName'] ?? '')
-                    .toString()
-                    .toLowerCase();
-
-                final String studentId = (data['studentId'] ?? '')
-                    .toString()
-                    .toLowerCase();
-
-                final String email = (data['email'] ?? '')
-                    .toString()
-                    .toLowerCase();
-
-                final String phone =
-                    (data['phone'] ?? data['phoneNumber'] ?? '')
-                        .toString()
-                        .toLowerCase();
-
-                final String course = (data['course'] ?? '').toString();
-
-                final String status = _statusForSelectedDate(data);
-
-                final String fullName = '$firstName $lastName'.trim();
-
-                final bool matchesSearch =
-                    _searchQuery.isEmpty ||
-                    studentName.contains(_searchQuery) ||
-                    fullName.contains(_searchQuery) ||
-                    studentId.contains(_searchQuery) ||
-                    email.contains(_searchQuery) ||
-                    phone.contains(_searchQuery) ||
-                    course.toLowerCase().contains(_searchQuery);
-
-                final bool matchesStatus =
-                    _selectedStatusFilter == 'All' ||
-                    status == _selectedStatusFilter;
-
-                final bool matchesCourse =
-                    _selectedCourseFilter == 'All' ||
-                    course == _selectedCourseFilter;
-
-                return matchesSearch && matchesStatus && matchesCourse;
-              }).toList();
 
               return LayoutBuilder(
                 builder: (context, constraints) {
@@ -470,12 +406,23 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                               child: TextField(
                                 controller: _searchController,
 
+                                focusNode: _searchFocusNode,
+
                                 style: const TextStyle(color: Colors.white),
 
+                                // =================================================
+                                // SEARCH FIX
+                                //
+                                // IMPORTANT:
+                                // DO NOT CALL setState HERE.
+                                //
+                                // This prevents the StreamBuilder from
+                                // rebuilding every time the user types.
+                                // =================================================
                                 onChanged: (value) {
-                                  setState(() {
-                                    _searchQuery = value.trim().toLowerCase();
-                                  });
+                                  _searchQueryNotifier.value = value
+                                      .trim()
+                                      .toLowerCase();
                                 },
 
                                 decoration: InputDecoration(
@@ -490,22 +437,35 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                     color: textSecondary,
                                   ),
 
-                                  suffixIcon: _searchQuery.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(
-                                            Icons.clear,
-                                            color: textSecondary,
-                                          ),
+                                  // =================================================
+                                  // CLEAR SEARCH
+                                  // =================================================
+                                  suffixIcon: ValueListenableBuilder<String>(
+                                    valueListenable: _searchQueryNotifier,
 
-                                          onPressed: () {
-                                            _searchController.clear();
+                                    builder: (context, searchQuery, child) {
+                                      if (searchQuery.isEmpty) {
+                                        return const SizedBox.shrink();
+                                      }
 
-                                            setState(() {
-                                              _searchQuery = '';
-                                            });
-                                          },
-                                        )
-                                      : null,
+                                      return IconButton(
+                                        icon: const Icon(
+                                          Icons.clear,
+                                          color: textSecondary,
+                                        ),
+
+                                        onPressed: () {
+                                          _searchController.clear();
+
+                                          _searchQueryNotifier.value = '';
+
+                                          // Keep cursor/focus
+                                          // inside search box.
+                                          _searchFocusNode.requestFocus();
+                                        },
+                                      );
+                                    },
+                                  ),
 
                                   filled: true,
 
@@ -548,202 +508,269 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                         // ==================================================
                         // STUDENT LIST
+                        //
+                        // ONLY THIS PART LISTENS TO SEARCH CHANGES.
+                        //
+                        // The TextField is NOT rebuilt when typing.
                         // ==================================================
-                        Container(
-                          width: double.infinity,
+                        ValueListenableBuilder<String>(
+                          valueListenable: _searchQueryNotifier,
 
-                          decoration: BoxDecoration(
-                            color: cardColor,
+                          builder: (context, searchQuery, child) {
+                            // ==================================================
+                            // FILTER STUDENTS
+                            // ==================================================
 
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                            final filteredStudents = mergedStudents.where((
+                              data,
+                            ) {
+                              final String studentName =
+                                  (data['studentName'] ?? '')
+                                      .toString()
+                                      .toLowerCase();
 
-                          child: filteredStudents.isEmpty
-                              ? const Padding(
-                                  padding: EdgeInsets.all(40),
+                              final String firstName = (data['firstName'] ?? '')
+                                  .toString()
+                                  .toLowerCase();
 
-                                  child: Center(
-                                    child: Text(
-                                      'No students match your search.',
-                                      style: TextStyle(
-                                        color: textSecondary,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  shrinkWrap: true,
+                              final String lastName = (data['lastName'] ?? '')
+                                  .toString()
+                                  .toLowerCase();
 
-                                  physics: const NeverScrollableScrollPhysics(),
+                              final String studentId = (data['studentId'] ?? '')
+                                  .toString()
+                                  .toLowerCase();
 
-                                  itemCount: filteredStudents.length,
+                              final String email = (data['email'] ?? '')
+                                  .toString()
+                                  .toLowerCase();
 
-                                  separatorBuilder: (context, index) =>
-                                      const Divider(
-                                        color: Colors.white12,
-                                        height: 1,
-                                      ),
+                              final String phone =
+                                  (data['phone'] ?? data['phoneNumber'] ?? '')
+                                      .toString()
+                                      .toLowerCase();
 
-                                  itemBuilder: (context, index) {
-                                    final data = filteredStudents[index];
+                              final String course = (data['course'] ?? '')
+                                  .toString();
 
-                                    final String studentName = _getStudentName(
-                                      data,
-                                    );
+                              final String status = _statusForSelectedDate(
+                                data,
+                              );
 
-                                    final String studentId =
-                                        (data['studentId'] ?? 'N/A').toString();
+                              final String fullName = '$firstName $lastName'
+                                  .trim();
 
-                                    final String course =
-                                        (data['course'] ?? 'General')
-                                            .toString();
+                              // ==================================================
+                              // SEARCH
+                              // ==================================================
 
-                                    final String status =
-                                        _statusForSelectedDate(data);
+                              final bool matchesSearch =
+                                  searchQuery.isEmpty ||
+                                  studentName.contains(searchQuery) ||
+                                  fullName.contains(searchQuery) ||
+                                  studentId.contains(searchQuery) ||
+                                  email.contains(searchQuery) ||
+                                  phone.contains(searchQuery) ||
+                                  course.toLowerCase().contains(searchQuery);
 
-                                    final int presentDays = _toInt(
-                                      data['presentDays'],
-                                    );
+                              final bool matchesStatus =
+                                  _selectedStatusFilter == 'All' ||
+                                  status == _selectedStatusFilter;
 
-                                    final int absentDays = _toInt(
-                                      data['absentDays'],
-                                    );
+                              final bool matchesCourse =
+                                  _selectedCourseFilter == 'All' ||
+                                  course.toLowerCase() ==
+                                      _selectedCourseFilter.toLowerCase();
 
-                                    final String profilePhoto =
-                                        (data['profilePhoto'] ?? '').toString();
+                              return matchesSearch &&
+                                  matchesStatus &&
+                                  matchesCourse;
+                            }).toList();
 
-                                    final Color statusColor =
-                                        status == 'Present'
-                                        ? successColor
-                                        : (status == 'Absent'
-                                              ? errorColor
-                                              : warningColor);
+                            // ==================================================
+                            // STUDENT LIST UI
+                            // ==================================================
 
-                                    return ListTile(
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 8,
+                            return Container(
+                              width: double.infinity,
+
+                              decoration: BoxDecoration(
+                                color: cardColor,
+
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+
+                              child: filteredStudents.isEmpty
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(40),
+
+                                      child: Center(
+                                        child: Text(
+                                          'No students match your search.',
+                                          style: TextStyle(
+                                            color: textSecondary,
+                                            fontSize: 16,
                                           ),
-
-                                      leading: profilePhoto.isNotEmpty
-                                          ? CircleAvatar(
-                                              backgroundImage: NetworkImage(
-                                                profilePhoto,
-                                              ),
-                                            )
-                                          : const CircleAvatar(
-                                              backgroundColor: primaryColor,
-
-                                              child: Icon(
-                                                Icons.person,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-
-                                      title: Text(
-                                        studentName.isEmpty
-                                            ? 'Unnamed Student'
-                                            : studentName,
-
-                                        style: const TextStyle(
-                                          color: Colors.white,
-
-                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
+                                    )
+                                  : ListView.separated(
+                                      shrinkWrap: true,
 
-                                      subtitle: Text(
-                                        'ID: $studentId • '
-                                        'Course: $course • '
-                                        'Present: $presentDays | '
-                                        'Absent: $absentDays',
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
 
-                                        style: const TextStyle(
-                                          color: textSecondary,
-                                          fontSize: 13,
-                                        ),
-                                      ),
+                                      itemCount: filteredStudents.length,
 
-                                      trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
-
-                                        children: [
-                                          Chip(
-                                            label: Text(
-                                              status,
-
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-
-                                            backgroundColor: statusColor
-                                                .withValues(alpha: 0.2),
+                                      separatorBuilder: (context, index) =>
+                                          const Divider(
+                                            color: Colors.white12,
+                                            height: 1,
                                           ),
 
-                                          const SizedBox(width: 12),
+                                      itemBuilder: (context, index) {
+                                        final data = filteredStudents[index];
 
-                                          PopupMenuButton<String>(
-                                            icon: const Icon(
-                                              Icons.edit_calendar,
+                                        final String studentName =
+                                            _getStudentName(data);
+
+                                        final String studentId =
+                                            (data['studentId'] ?? 'N/A')
+                                                .toString();
+
+                                        final String course =
+                                            (data['course'] ?? 'General')
+                                                .toString();
+
+                                        final String status =
+                                            _statusForSelectedDate(data);
+
+                                        final int presentDays = _toInt(
+                                          data['presentDays'],
+                                        );
+
+                                        final int absentDays = _toInt(
+                                          data['absentDays'],
+                                        );
+
+                                        final String profilePhoto =
+                                            (data['profilePhoto'] ?? '')
+                                                .toString();
+
+                                        final Color statusColor =
+                                            status == 'Present'
+                                            ? successColor
+                                            : (status == 'Absent'
+                                                  ? errorColor
+                                                  : warningColor);
+
+                                        return ListTile(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 8,
+                                              ),
+
+                                          leading: profilePhoto.isNotEmpty
+                                              ? CircleAvatar(
+                                                  backgroundImage: NetworkImage(
+                                                    profilePhoto,
+                                                  ),
+                                                )
+                                              : const CircleAvatar(
+                                                  backgroundColor: primaryColor,
+
+                                                  child: Icon(
+                                                    Icons.person,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+
+                                          title: Text(
+                                            studentName.isEmpty
+                                                ? 'Unnamed Student'
+                                                : studentName,
+
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+
+                                          subtitle: Text(
+                                            'ID: $studentId • '
+                                            'Course: $course • '
+                                            'Present: $presentDays | '
+                                            'Absent: $absentDays',
+
+                                            style: const TextStyle(
                                               color: textSecondary,
+                                              fontSize: 13,
                                             ),
+                                          ),
 
-                                            color: cardColor,
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
 
-                                            onSelected: (newStatus) {
-                                              _updateAttendanceStatus(
-                                                data,
-                                                newStatus,
-                                              );
-                                            },
+                                            children: [
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 14,
+                                                      vertical: 8,
+                                                    ),
 
-                                            itemBuilder: (context) => [
-                                              const PopupMenuItem(
-                                                value: 'Present',
+                                                decoration: BoxDecoration(
+                                                  color: statusColor.withValues(
+                                                    alpha: 0.14,
+                                                  ),
+
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+
+                                                  border: Border.all(
+                                                    color: statusColor
+                                                        .withValues(
+                                                          alpha: 0.35,
+                                                        ),
+                                                  ),
+                                                ),
 
                                                 child: Text(
-                                                  'Mark Present',
+                                                  status,
 
                                                   style: TextStyle(
-                                                    color: successColor,
+                                                    color: statusColor,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w700,
                                                   ),
                                                 ),
                                               ),
 
-                                              const PopupMenuItem(
-                                                value: 'Absent',
+                                              const SizedBox(width: 8),
 
-                                                child: Text(
-                                                  'Mark Absent',
+                                              IconButton(
+                                                tooltip: 'Change attendance',
 
-                                                  style: TextStyle(
-                                                    color: errorColor,
-                                                  ),
+                                                icon: const Icon(
+                                                  Icons.edit_calendar_rounded,
+                                                  color: textSecondary,
                                                 ),
-                                              ),
 
-                                              const PopupMenuItem(
-                                                value: 'Pending',
-
-                                                child: Text(
-                                                  'Mark Pending',
-
-                                                  style: TextStyle(
-                                                    color: warningColor,
-                                                  ),
-                                                ),
+                                                onPressed: () {
+                                                  _showAttendanceChangeDialog(
+                                                    data,
+                                                    status,
+                                                  );
+                                                },
                                               ),
                                             ],
                                           ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
+                                        );
+                                      },
+                                    ),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -834,21 +861,18 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   // ============================================================
 
   Widget _buildDateSelector() {
-    // Get today's date without the current time.
     final DateTime today = DateTime(
       DateTime.now().year,
       DateTime.now().month,
       DateTime.now().day,
     );
 
-    // Make sure the selected date does not contain a time component.
     final DateTime selectedDateOnly = DateTime(
       _selectedDate.year,
       _selectedDate.month,
       _selectedDate.day,
     );
 
-    // Check whether the selected date is today.
     final bool isToday = selectedDateOnly == today;
 
     return Container(
@@ -868,8 +892,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
         children: [
           // ========================================================
           // PREVIOUS DAY
-          //
-          // Admin can go backward to any past date.
           // ========================================================
           IconButton(
             icon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
@@ -891,23 +913,16 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
               final DateTime? picked = await showDatePicker(
                 context: context,
 
-                // Current selected date.
                 initialDate: selectedDateOnly.isAfter(today)
                     ? today
                     : selectedDateOnly,
 
-                // Keep your existing starting date.
                 firstDate: DateTime(2025, 1, 1),
 
-                // IMPORTANT:
-                // Today is the maximum selectable date.
-                // Future dates cannot be selected.
                 lastDate: today,
               );
 
               if (picked != null) {
-                // Extra safety check.
-                // Never allow a future date.
                 if (picked.isAfter(today)) {
                   return;
                 }
@@ -936,18 +951,16 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
           // ========================================================
           // NEXT DAY
-          //
-          // Disabled when the selected date is today.
-          // Therefore admin cannot move into tomorrow/future.
           // ========================================================
           IconButton(
             icon: Icon(
               Icons.chevron_right,
+
               color: isToday ? Colors.white24 : Colors.white,
+
               size: 20,
             ),
 
-            // null disables the button.
             onPressed: isToday
                 ? null
                 : () {
@@ -955,8 +968,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                       const Duration(days: 1),
                     );
 
-                    // Extra safety:
-                    // Do not allow the next date if it is future.
                     if (nextDate.isAfter(today)) {
                       return;
                     }
@@ -1094,16 +1105,217 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   }
 
   // ============================================================
+  // ATTENDANCE CHANGE POPUP
+  // ============================================================
+
+  Future<void> _showAttendanceChangeDialog(
+    Map<String, dynamic> data,
+    String currentStatus,
+  ) async {
+    String selectedStatus = currentStatus;
+
+    final String studentName = _getStudentName(data).isEmpty
+        ? 'Unnamed Student'
+        : _getStudentName(data);
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final Color selectedColor = selectedStatus == 'Present'
+                ? successColor
+                : selectedStatus == 'Absent'
+                ? errorColor
+                : warningColor;
+
+            return AlertDialog(
+              backgroundColor: cardColor,
+
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+
+              title: const Text(
+                'Change Attendance',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+
+                crossAxisAlignment: CrossAxisAlignment.start,
+
+                children: [
+                  Text(
+                    studentName,
+
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    'Current status: $currentStatus',
+
+                    style: const TextStyle(color: textSecondary, fontSize: 12),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  _attendanceDialogOption(
+                    'Present',
+                    Icons.check_circle_rounded,
+                    successColor,
+                    selectedStatus == 'Present',
+                    () {
+                      setDialogState(() {
+                        selectedStatus = 'Present';
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  _attendanceDialogOption(
+                    'Absent',
+                    Icons.cancel_rounded,
+                    errorColor,
+                    selectedStatus == 'Absent',
+                    () {
+                      setDialogState(() {
+                        selectedStatus = 'Absent';
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  _attendanceDialogOption(
+                    'Pending',
+                    Icons.pending_rounded,
+                    warningColor,
+                    selectedStatus == 'Pending',
+                    () {
+                      setDialogState(() {
+                        selectedStatus = 'Pending';
+                      });
+                    },
+                  ),
+                ],
+              ),
+
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+
+                  child: const Text(
+                    'Cancel',
+
+                    style: TextStyle(color: textSecondary),
+                  ),
+                ),
+
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: selectedStatus == currentStatus
+                        ? Colors.white24
+                        : selectedColor,
+
+                    foregroundColor: Colors.white,
+                  ),
+
+                  onPressed: selectedStatus == currentStatus
+                      ? null
+                      : () async {
+                          Navigator.of(dialogContext).pop();
+
+                          await _updateAttendanceStatus(data, selectedStatus);
+                        },
+
+                  child: Text(
+                    selectedStatus == currentStatus
+                        ? 'No Change'
+                        : 'Update $selectedStatus',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // ATTENDANCE DIALOG OPTION
+  // ============================================================
+
+  Widget _attendanceDialogOption(
+    String label,
+    IconData icon,
+    Color color,
+    bool selected,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+
+      borderRadius: BorderRadius.circular(10),
+
+      child: Container(
+        width: double.infinity,
+
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.14) : Colors.white10,
+
+          borderRadius: BorderRadius.circular(10),
+
+          border: Border.all(color: selected ? color : Colors.white12),
+        ),
+
+        child: Row(
+          children: [
+            Icon(icon, color: selected ? color : textSecondary, size: 20),
+
+            const SizedBox(width: 10),
+
+            Expanded(
+              child: Text(
+                label,
+
+                style: TextStyle(
+                  color: selected ? Colors.white : textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+
+              color: selected ? color : textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
   // UPDATE ATTENDANCE
-  //
-  // ONE DOCUMENT PER STUDENT.
-  //
-  // Existing document:
-  // attendance/<existingDocumentId>
-  //
-  // New student:
-  // attendance/<userDocumentId>
-  //
   // ============================================================
 
   Future<void> _updateAttendanceStatus(
@@ -1134,7 +1346,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
         oldStatus == 'Present' || oldStatus == 'Absent';
 
     // ==========================================================
-    // REMOVE OLD STATUS FROM COUNTERS
+    // REMOVE OLD STATUS
     // ==========================================================
 
     if (oldStatus == 'Present') {
@@ -1159,9 +1371,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
       }
 
       history[dateKey] = 'present';
-    }
-    // ==========================================================
-    else if (newStatus == 'Absent') {
+    } else if (newStatus == 'Absent') {
       absentDays++;
 
       if (!hadPreviousStatus) {
@@ -1169,9 +1379,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
       }
 
       history[dateKey] = 'absent';
-    }
-    // ==========================================================
-    else {
+    } else {
       history.remove(dateKey);
 
       if (hadPreviousStatus && totalDays > 0) {
@@ -1244,6 +1452,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
     } else {
       await attendanceRef.set({
         ...attendanceData,
+
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
