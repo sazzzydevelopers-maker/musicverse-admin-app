@@ -50,6 +50,59 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   }
 
   // ============================================================
+  // STUDENT ACCOUNT STATUS
+  //
+  // Reads account status from USER collection.
+  //
+  // Main field:
+  // is_active
+  //
+  // Also supports:
+  // isActive
+  // active
+  // accountStatus
+  // status
+  //
+  // If no account status field exists,
+  // existing behavior remains Active.
+  // ============================================================
+
+  bool _isStudentActive(Map<String, dynamic> data) {
+    final dynamic isActive = data['is_active'];
+
+    if (isActive is bool) {
+      return isActive;
+    }
+
+    final dynamic isActiveCamel = data['isActive'];
+
+    if (isActiveCamel is bool) {
+      return isActiveCamel;
+    }
+
+    final dynamic active = data['active'];
+
+    if (active is bool) {
+      return active;
+    }
+
+    final String accountStatus = (data['accountStatus'] ?? data['status'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    if (accountStatus == 'inactive') {
+      return false;
+    }
+
+    if (accountStatus == 'active') {
+      return true;
+    }
+
+    return true;
+  }
+
+  // ============================================================
   // BUILD
   // ============================================================
 
@@ -237,6 +290,30 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                     mergedData['profilePhoto'] ??
                     '';
 
+                // --------------------------------------------------------
+                // KEEP USER ACCOUNT STATUS FROM USER DOCUMENT
+                // --------------------------------------------------------
+
+                if (userData.containsKey('is_active')) {
+                  mergedData['is_active'] = userData['is_active'];
+                }
+
+                if (userData.containsKey('isActive')) {
+                  mergedData['isActive'] = userData['isActive'];
+                }
+
+                if (userData.containsKey('active')) {
+                  mergedData['active'] = userData['active'];
+                }
+
+                if (userData.containsKey('accountStatus')) {
+                  mergedData['accountStatus'] = userData['accountStatus'];
+                }
+
+                if (userData.containsKey('status')) {
+                  mergedData['status'] = userData['status'];
+                }
+
                 if ((mergedData['studentName'] ?? '')
                     .toString()
                     .trim()
@@ -254,7 +331,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
               // STATISTICS
               // ============================================================
 
-              int totalStudents = mergedStudents.length;
+              final int totalStudents = mergedStudents.length;
 
               int presentCount = 0;
               int absentCount = 0;
@@ -410,15 +487,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                                 style: const TextStyle(color: Colors.white),
 
-                                // =================================================
-                                // SEARCH FIX
-                                //
-                                // IMPORTANT:
-                                // DO NOT CALL setState HERE.
-                                //
-                                // This prevents the StreamBuilder from
-                                // rebuilding every time the user types.
-                                // =================================================
                                 onChanged: (value) {
                                   _searchQueryNotifier.value = value
                                       .trim()
@@ -437,9 +505,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                     color: textSecondary,
                                   ),
 
-                                  // =================================================
-                                  // CLEAR SEARCH
-                                  // =================================================
                                   suffixIcon: ValueListenableBuilder<String>(
                                     valueListenable: _searchQueryNotifier,
 
@@ -459,8 +524,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                                           _searchQueryNotifier.value = '';
 
-                                          // Keep cursor/focus
-                                          // inside search box.
                                           _searchFocusNode.requestFocus();
                                         },
                                       );
@@ -508,19 +571,11 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                         // ==================================================
                         // STUDENT LIST
-                        //
-                        // ONLY THIS PART LISTENS TO SEARCH CHANGES.
-                        //
-                        // The TextField is NOT rebuilt when typing.
                         // ==================================================
                         ValueListenableBuilder<String>(
                           valueListenable: _searchQueryNotifier,
 
                           builder: (context, searchQuery, child) {
-                            // ==================================================
-                            // FILTER STUDENTS
-                            // ==================================================
-
                             final filteredStudents = mergedStudents.where((
                               data,
                             ) {
@@ -559,10 +614,6 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                               final String fullName = '$firstName $lastName'
                                   .trim();
-
-                              // ==================================================
-                              // SEARCH
-                              // ==================================================
 
                               final bool matchesSearch =
                                   searchQuery.isEmpty ||
@@ -645,6 +696,18 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                         final String status =
                                             _statusForSelectedDate(data);
 
+                                        // ==================================================
+                                        // ACTIVE / INACTIVE
+                                        // ==================================================
+
+                                        final bool isStudentActive =
+                                            _isStudentActive(data);
+
+                                        final String accountStatus =
+                                            isStudentActive
+                                            ? 'Active'
+                                            : 'Inactive';
+
                                         final int presentDays = _toInt(
                                           data['presentDays'],
                                         );
@@ -713,6 +776,9 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                             mainAxisSize: MainAxisSize.min,
 
                                             children: [
+                                              // ==================================================
+                                              // ATTENDANCE STATUS
+                                              // ==================================================
                                               Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
@@ -749,20 +815,111 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                                               const SizedBox(width: 8),
 
-                                              IconButton(
-                                                tooltip: 'Change attendance',
+                                              // ==================================================
+                                              // ACTIVE / INACTIVE
+                                              // ==================================================
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 7,
+                                                    ),
 
-                                                icon: const Icon(
-                                                  Icons.edit_calendar_rounded,
-                                                  color: textSecondary,
+                                                decoration: BoxDecoration(
+                                                  color: isStudentActive
+                                                      ? successColor.withValues(
+                                                          alpha: 0.10,
+                                                        )
+                                                      : errorColor.withValues(
+                                                          alpha: 0.10,
+                                                        ),
+
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+
+                                                  border: Border.all(
+                                                    color: isStudentActive
+                                                        ? successColor
+                                                              .withValues(
+                                                                alpha: 0.30,
+                                                              )
+                                                        : errorColor.withValues(
+                                                            alpha: 0.30,
+                                                          ),
+                                                  ),
                                                 ),
 
-                                                onPressed: () {
-                                                  _showAttendanceChangeDialog(
-                                                    data,
-                                                    status,
-                                                  );
-                                                },
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+
+                                                  children: [
+                                                    Icon(
+                                                      isStudentActive
+                                                          ? Icons.check_circle
+                                                          : Icons.block,
+
+                                                      size: 14,
+
+                                                      color: isStudentActive
+                                                          ? successColor
+                                                          : errorColor,
+                                                    ),
+
+                                                    const SizedBox(width: 5),
+
+                                                    Text(
+                                                      accountStatus,
+
+                                                      style: TextStyle(
+                                                        color: isStudentActive
+                                                            ? successColor
+                                                            : errorColor,
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+
+                                              const SizedBox(width: 8),
+
+                                              // ==================================================
+                                              // ATTENDANCE EDIT
+                                              //
+                                              // ACTIVE:
+                                              // Admin can change attendance.
+                                              //
+                                              // INACTIVE:
+                                              // Attendance editing is locked.
+                                              // ==================================================
+                                              IconButton(
+                                                tooltip: isStudentActive
+                                                    ? 'Change attendance'
+                                                    : 'Inactive student - attendance locked',
+
+                                                icon: Icon(
+                                                  isStudentActive
+                                                      ? Icons
+                                                            .edit_calendar_rounded
+                                                      : Icons
+                                                            .lock_outline_rounded,
+
+                                                  color: isStudentActive
+                                                      ? textSecondary
+                                                      : Colors.white24,
+                                                ),
+
+                                                onPressed: isStudentActive
+                                                    ? () {
+                                                        _showAttendanceChangeDialog(
+                                                          data,
+                                                          status,
+                                                        );
+                                                      }
+                                                    : null,
                                               ),
                                             ],
                                           ),
@@ -1140,6 +1297,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
               title: const Text(
                 'Change Attendance',
+
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -1298,6 +1456,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                 style: TextStyle(
                   color: selected ? Colors.white : textSecondary,
+
                   fontWeight: FontWeight.w600,
                 ),
               ),
