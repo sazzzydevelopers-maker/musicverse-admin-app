@@ -154,20 +154,23 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           // ====================================================
           // COURSES
           // ====================================================
-
-          final Set<String> coursesSet = {'All'};
-
-          for (final doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-
-            final course = data['course'];
-
-            if (course != null && course.toString().trim().isNotEmpty) {
-              coursesSet.add(course.toString());
-            }
-          }
-
-          final List<String> availableCourses = coursesSet.toList();
+          //
+          // Keep the course filter fixed instead of generating the
+          // list from the students currently stored in Firestore.
+          // This ensures every course is always available in the
+          // Student Management search/filter dropdown.
+          //
+          // Required course list:
+          // Piano, Guitar, Drums, Flute, Violin
+          //
+          final List<String> availableCourses = [
+            'All',
+            'Piano',
+            'Guitar',
+            'Drums',
+            'Flute',
+            'Violin',
+          ];
 
           return ValueListenableBuilder<String>(
             valueListenable: _searchQueryNotifier,
