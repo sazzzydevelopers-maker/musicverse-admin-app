@@ -2108,6 +2108,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     final String studentName =
         '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim();
 
+    final String studentId = data['studentId']?.toString().trim() ?? '';
+
     final bool? confirmed = await showDialog<bool>(
       context: context,
 
@@ -2117,13 +2119,14 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
           title: const Text(
             'Delete Account?',
-
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
 
           content: Text(
             'Are you sure you want to permanently delete '
             '${studentName.isEmpty ? 'this student' : studentName}\'s account?\n\n'
+            'The student account and all attendance records for this student '
+            'will also be deleted.\n\n'
             'This action cannot be undone.',
 
             style: const TextStyle(color: textSecondary),
@@ -2137,7 +2140,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
               child: const Text(
                 'Cancel',
-
                 style: TextStyle(color: textSecondary),
               ),
             ),
@@ -2145,7 +2147,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: errorColor,
-
                 foregroundColor: Colors.white,
               ),
 
@@ -2164,24 +2165,150 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       return;
     }
 
+    // Show a separate progress dialog so the admin cannot accidentally
+    // trigger another delete while Firestore is removing the records.
+    if (!context.mounted) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (progressContext) {
+        return const AlertDialog(
+          backgroundColor: cardColor,
+          content: Row(
+            children: [
+              CircularProgressIndicator(color: primaryColor),
+              SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  'Deleting student and attendance records...',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
     try {
-      await FirebaseFirestore.instance.collection('user').doc(docId).delete();
+      final FirebaseFirestore firestore = FirebaseFirestore.instance;
+
+      // ==========================================================
+      // 1. FIND ALL ATTENDANCE RECORDS FOR THIS STUDENT
+      // ==========================================================
+      //
+      // Your attendance documents contain both:
+      //   studentUid
+      //   studentId
+      //
+      // We check both fields so older and newer attendance records
+      // are removed as well.
+      //
+      // docId is the Firestore document ID from the `user` collection,
+      // which is also stored as `studentUid` in your attendance data.
+      final Set<String> attendanceDocumentIds = <String>{};
+      final List<DocumentReference<Map<String, dynamic>>> attendanceReferences =
+          [];
+
+      if (docId.trim().isNotEmpty) {
+        final QuerySnapshot<Map<String, dynamic>> byStudentUid = await firestore
+            .collection('attendance')
+            .where('studentUid', isEqualTo: docId)
+            .get();
+
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in byStudentUid.docs) {
+          if (attendanceDocumentIds.add(doc.id)) {
+            attendanceReferences.add(doc.reference);
+          }
+        }
+      }
+
+      if (studentId.isNotEmpty) {
+        final QuerySnapshot<Map<String, dynamic>> byStudentId = await firestore
+            .collection('attendance')
+            .where('studentId', isEqualTo: studentId)
+            .get();
+
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in byStudentId.docs) {
+          if (attendanceDocumentIds.add(doc.id)) {
+            attendanceReferences.add(doc.reference);
+          }
+        }
+      }
+
+      // ==========================================================
+      // 2. DELETE ATTENDANCE RECORDS
+      // ==========================================================
+      //
+      // Firestore batches have a write limit. Delete in groups of
+      // 450 so the code remains safe if a student has many records.
+      const int batchLimit = 450;
+
+      for (
+        int start = 0;
+        start < attendanceReferences.length;
+        start += batchLimit
+      ) {
+        final int end = min(start + batchLimit, attendanceReferences.length);
+
+        final WriteBatch batch = firestore.batch();
+
+        for (final DocumentReference<Map<String, dynamic>> reference
+            in attendanceReferences.sublist(start, end)) {
+          batch.delete(reference);
+        }
+
+        await batch.commit();
+      }
+
+      // ==========================================================
+      // 3. DELETE THE STUDENT FROM USER COLLECTION
+      // ==========================================================
+      await firestore.collection('user').doc(docId).delete();
+
+      // ==========================================================
+      // 4. CLOSE PROGRESS DIALOG
+      // ==========================================================
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // ==========================================================
+      // 5. SUCCESS MESSAGE
+      // ==========================================================
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            attendanceReferences.isEmpty
+                ? 'Student account deleted successfully.'
+                : 'Student account and ${attendanceReferences.length} attendance record(s) deleted successfully.',
+          ),
+        ),
+      );
+    } catch (e) {
+      // Close progress dialog if it is still open.
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
 
       if (!context.mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Student account deleted successfully.')),
+        SnackBar(
+          content: Text('Failed to delete student and attendance records: $e'),
+        ),
       );
-    } catch (e) {
-      if (!context.mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to delete account: $e')));
     }
   }
 }
