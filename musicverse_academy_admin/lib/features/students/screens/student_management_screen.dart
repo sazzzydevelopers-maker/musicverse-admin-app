@@ -22,7 +22,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   // Keeps the search field focused while the student list rebuilds.
   final FocusNode _searchFocusNode = FocusNode();
 
-  String _searchQuery = '';
+  final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>('');
   String _selectedAccountStatus = 'All';
   String _selectedFeeStatus = 'All';
   String _selectedCourse = 'All';
@@ -55,6 +55,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   void dispose() {
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _searchQueryNotifier.dispose();
     super.dispose();
   }
 
@@ -168,482 +169,494 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
           final List<String> availableCourses = coursesSet.toList();
 
-          // ====================================================
-          // FILTER
-          // ====================================================
+          return ValueListenableBuilder<String>(
+            valueListenable: _searchQueryNotifier,
+            builder: (context, searchQuery, _) {
+              // ====================================================
+              // FILTER
+              // ====================================================
 
-          final filteredDocs = docs.where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
+              final filteredDocs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
 
-            final firstName = (data['firstName'] ?? '')
-                .toString()
-                .toLowerCase();
+                final firstName = (data['firstName'] ?? '')
+                    .toString()
+                    .toLowerCase();
 
-            final lastName = (data['lastName'] ?? '').toString().toLowerCase();
+                final lastName = (data['lastName'] ?? '')
+                    .toString()
+                    .toLowerCase();
 
-            final studentId = (data['studentId'] ?? '')
-                .toString()
-                .toLowerCase();
+                final studentId = (data['studentId'] ?? '')
+                    .toString()
+                    .toLowerCase();
 
-            final email = (data['email'] ?? '').toString().toLowerCase();
+                final email = (data['email'] ?? '').toString().toLowerCase();
 
-            final phone = (data['phone'] ?? '').toString().toLowerCase();
+                final phone = (data['phone'] ?? '').toString().toLowerCase();
 
-            final fullName = '$firstName $lastName';
+                final fullName = '$firstName $lastName';
 
-            final accountStatus = data['accountStatus'] ?? 'Inactive';
+                final accountStatus = data['accountStatus'] ?? 'Inactive';
 
-            final feeStatus = data['feeStatus'] ?? 'Pending';
+                final feeStatus = data['feeStatus'] ?? 'Pending';
 
-            final course = data['course'] ?? '';
+                final course = data['course'] ?? '';
 
-            final bool matchesSearch =
-                _searchQuery.isEmpty ||
-                fullName.contains(_searchQuery) ||
-                studentId.contains(_searchQuery) ||
-                email.contains(_searchQuery) ||
-                phone.contains(_searchQuery);
+                final bool matchesSearch =
+                    searchQuery.isEmpty ||
+                    fullName.contains(searchQuery) ||
+                    studentId.contains(searchQuery) ||
+                    email.contains(searchQuery) ||
+                    phone.contains(searchQuery);
 
-            final bool matchesAccount =
-                _selectedAccountStatus == 'All' ||
-                accountStatus == _selectedAccountStatus;
+                final bool matchesAccount =
+                    _selectedAccountStatus == 'All' ||
+                    accountStatus == _selectedAccountStatus;
 
-            final bool matchesFee =
-                _selectedFeeStatus == 'All' || feeStatus == _selectedFeeStatus;
+                final bool matchesFee =
+                    _selectedFeeStatus == 'All' ||
+                    feeStatus == _selectedFeeStatus;
 
-            final bool matchesCourse =
-                _selectedCourse == 'All' || course == _selectedCourse;
+                final bool matchesCourse =
+                    _selectedCourse == 'All' || course == _selectedCourse;
 
-            return matchesSearch &&
-                matchesAccount &&
-                matchesFee &&
-                matchesCourse;
-          }).toList();
+                return matchesSearch &&
+                    matchesAccount &&
+                    matchesFee &&
+                    matchesCourse;
+              }).toList();
 
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final bool isDesktop = constraints.maxWidth > 900;
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool isDesktop = constraints.maxWidth > 900;
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
 
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-
-                  children: [
-                    const Text(
-                      'Manage and monitor all MusicVerse Academy students.',
-                      style: TextStyle(color: textSecondary, fontSize: 14),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ==================================================
-                    // STAT CARDS
-                    // ==================================================
-                    GridView.count(
-                      crossAxisCount: constraints.maxWidth > 1200
-                          ? 5
-                          : constraints.maxWidth > 700
-                          ? 3
-                          : 2,
-
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-
-                      shrinkWrap: true,
-
-                      physics: const NeverScrollableScrollPhysics(),
-
-                      childAspectRatio: 1.6,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
 
                       children: [
-                        _buildStatCard(
-                          'Total Students',
-                          totalStudents.toString(),
-                          primaryColor,
-                          Icons.people,
+                        const Text(
+                          'Manage and monitor all MusicVerse Academy students.',
+                          style: TextStyle(color: textSecondary, fontSize: 14),
                         ),
 
-                        _buildStatCard(
-                          'Active Students',
-                          activeStudents.toString(),
-                          successColor,
-                          Icons.check_circle,
+                        const SizedBox(height: 20),
+
+                        // ==================================================
+                        // STAT CARDS
+                        // ==================================================
+                        GridView.count(
+                          crossAxisCount: constraints.maxWidth > 1200
+                              ? 5
+                              : constraints.maxWidth > 700
+                              ? 3
+                              : 2,
+
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+
+                          shrinkWrap: true,
+
+                          physics: const NeverScrollableScrollPhysics(),
+
+                          childAspectRatio: 1.6,
+
+                          children: [
+                            _buildStatCard(
+                              'Total Students',
+                              totalStudents.toString(),
+                              primaryColor,
+                              Icons.people,
+                            ),
+
+                            _buildStatCard(
+                              'Active Students',
+                              activeStudents.toString(),
+                              successColor,
+                              Icons.check_circle,
+                            ),
+
+                            _buildStatCard(
+                              'Inactive Students',
+                              inactiveStudents.toString(),
+                              errorColor,
+                              Icons.cancel,
+                            ),
+
+                            _buildStatCard(
+                              'Paid Students',
+                              paidStudents.toString(),
+                              secondaryColor,
+                              Icons.payment,
+                            ),
+
+                            _buildStatCard(
+                              'Pending Fees',
+                              pendingFees.toString(),
+                              warningColor,
+                              Icons.pending,
+                            ),
+                          ],
                         ),
 
-                        _buildStatCard(
-                          'Inactive Students',
-                          inactiveStudents.toString(),
-                          errorColor,
-                          Icons.cancel,
-                        ),
+                        const SizedBox(height: 28),
 
-                        _buildStatCard(
-                          'Paid Students',
-                          paidStudents.toString(),
-                          secondaryColor,
-                          Icons.payment,
-                        ),
+                        // ==================================================
+                        // SEARCH + FILTERS
+                        // ==================================================
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
 
-                        _buildStatCard(
-                          'Pending Fees',
-                          pendingFees.toString(),
-                          warningColor,
-                          Icons.pending,
-                        ),
-                      ],
-                    ),
+                          children: [
+                            SizedBox(
+                              width: isDesktop ? 300 : double.infinity,
 
-                    const SizedBox(height: 28),
+                              child: TextField(
+                                controller: _searchController,
+                                focusNode: _searchFocusNode,
 
-                    // ==================================================
-                    // SEARCH + FILTERS
-                    // ==================================================
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                                style: const TextStyle(color: Colors.white),
 
-                      children: [
-                        SizedBox(
-                          width: isDesktop ? 300 : double.infinity,
+                                onChanged: (value) {
+                                  // Update only the search results.
+                                  // Do not call setState() here because that
+                                  // rebuilds the entire screen on every
+                                  // character typed (for example: "s" -> "i").
+                                  _searchQueryNotifier.value = value
+                                      .toLowerCase();
+                                },
 
-                          child: TextField(
-                            controller: _searchController,
-                            focusNode: _searchFocusNode,
+                                decoration: InputDecoration(
+                                  hintText: 'Search students...',
 
-                            style: const TextStyle(color: Colors.white),
+                                  hintStyle: const TextStyle(
+                                    color: textSecondary,
+                                  ),
 
-                            onChanged: (value) {
-                              setState(() {
-                                _searchQuery = value.trim().toLowerCase();
-                              });
+                                  prefixIcon: const Icon(
+                                    Icons.search,
+                                    color: textSecondary,
+                                  ),
 
-                              // Keep the search field focused after the
-                              // student list rebuilds.
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                if (mounted && !_searchFocusNode.hasFocus) {
-                                  _searchFocusNode.requestFocus();
-                                }
-                              });
-                            },
+                                  filled: true,
 
-                            decoration: InputDecoration(
-                              hintText: 'Search students...',
+                                  fillColor: cardColor,
 
-                              hintStyle: const TextStyle(color: textSecondary),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide.none,
+                                  ),
 
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: textSecondary,
-                              ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide.none,
+                                  ),
 
-                              filled: true,
-
-                              fillColor: cardColor,
-
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none,
-                              ),
-
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none,
-                              ),
-
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(
-                                  color: primaryColor,
-                                  width: 1.5,
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(
+                                      color: primaryColor,
+                                      width: 1.5,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
 
-                        _buildDropdownFilter(
-                          'Account',
-                          _selectedAccountStatus,
-                          ['All', 'Active', 'Inactive'],
-                          (value) {
-                            setState(() {
-                              _selectedAccountStatus = value!;
-                            });
-                          },
-                        ),
-
-                        _buildDropdownFilter(
-                          'Fee',
-                          _selectedFeeStatus,
-                          ['All', 'Paid', 'Pending'],
-                          (value) {
-                            setState(() {
-                              _selectedFeeStatus = value!;
-                            });
-                          },
-                        ),
-
-                        _buildDropdownFilter(
-                          'Course',
-                          _selectedCourse,
-                          availableCourses,
-                          (value) {
-                            setState(() {
-                              _selectedCourse = value!;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ==================================================
-                    // STUDENT LIST
-                    // ==================================================
-                    Container(
-                      width: double.infinity,
-
-                      decoration: BoxDecoration(
-                        color: cardColor,
-
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-
-                      child: filteredDocs.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(40),
-
-                              child: Center(
-                                child: Text(
-                                  'No students found',
-                                  style: TextStyle(
-                                    color: textSecondary,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            )
-                          : ListView.separated(
-                              shrinkWrap: true,
-
-                              physics: const NeverScrollableScrollPhysics(),
-
-                              itemCount: filteredDocs.length,
-
-                              separatorBuilder: (context, index) {
-                                return const Divider(
-                                  color: Colors.white12,
-                                  height: 1,
-                                );
+                            _buildDropdownFilter(
+                              'Account',
+                              _selectedAccountStatus,
+                              ['All', 'Active', 'Inactive'],
+                              (value) {
+                                setState(() {
+                                  _selectedAccountStatus = value!;
+                                });
                               },
+                            ),
 
-                              itemBuilder: (context, index) {
-                                final doc = filteredDocs[index];
+                            _buildDropdownFilter(
+                              'Fee',
+                              _selectedFeeStatus,
+                              ['All', 'Paid', 'Pending'],
+                              (value) {
+                                setState(() {
+                                  _selectedFeeStatus = value!;
+                                });
+                              },
+                            ),
 
-                                final data = doc.data() as Map<String, dynamic>;
+                            _buildDropdownFilter(
+                              'Course',
+                              _selectedCourse,
+                              availableCourses,
+                              (value) {
+                                setState(() {
+                                  _selectedCourse = value!;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
 
-                                final String docId = doc.id;
+                        const SizedBox(height: 24),
 
-                                final String firstName =
-                                    data['firstName']?.toString() ?? '';
+                        // ==================================================
+                        // STUDENT LIST
+                        // ==================================================
+                        Container(
+                          width: double.infinity,
 
-                                final String lastName =
-                                    data['lastName']?.toString() ?? '';
+                          decoration: BoxDecoration(
+                            color: cardColor,
 
-                                final String studentId =
-                                    data['studentId']?.toString() ?? 'N/A';
+                            borderRadius: BorderRadius.circular(12),
+                          ),
 
-                                final String course =
-                                    data['course']?.toString() ?? 'General';
+                          child: filteredDocs.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.all(40),
 
-                                final String phone =
-                                    data['phone']?.toString() ?? 'N/A';
-
-                                final String feeStatus =
-                                    data['feeStatus']?.toString() ?? 'Pending';
-
-                                final String accountStatus =
-                                    data['accountStatus']?.toString() ??
-                                    'Inactive';
-
-                                final String profilePhoto =
-                                    data['profilePhoto']?.toString() ?? '';
-
-                                return ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-
-                                  leading: _buildProfileAvatar(
-                                    profilePhoto,
-                                    firstName,
-                                    lastName,
-                                  ),
-
-                                  title: Text(
-                                    '$firstName $lastName',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
+                                  child: Center(
+                                    child: Text(
+                                      'No students found',
+                                      style: TextStyle(
+                                        color: textSecondary,
+                                        fontSize: 16,
+                                      ),
                                     ),
                                   ),
+                                )
+                              : ListView.separated(
+                                  shrinkWrap: true,
 
-                                  subtitle: Text(
-                                    'ID: $studentId • Course: $course • Phone: $phone',
-                                    style: const TextStyle(
-                                      color: textSecondary,
-                                      fontSize: 13,
-                                    ),
-                                  ),
+                                  physics: const NeverScrollableScrollPhysics(),
 
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                  itemCount: filteredDocs.length,
 
-                                    children: [
-                                      Chip(
-                                        label: Text(
-                                          feeStatus,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.white,
+                                  separatorBuilder: (context, index) {
+                                    return const Divider(
+                                      color: Colors.white12,
+                                      height: 1,
+                                    );
+                                  },
+
+                                  itemBuilder: (context, index) {
+                                    final doc = filteredDocs[index];
+
+                                    final data =
+                                        doc.data() as Map<String, dynamic>;
+
+                                    final String docId = doc.id;
+
+                                    final String firstName =
+                                        data['firstName']?.toString() ?? '';
+
+                                    final String lastName =
+                                        data['lastName']?.toString() ?? '';
+
+                                    final String studentId =
+                                        data['studentId']?.toString() ?? 'N/A';
+
+                                    final String course =
+                                        data['course']?.toString() ?? 'General';
+
+                                    final String phone =
+                                        data['phone']?.toString() ?? 'N/A';
+
+                                    final String feeStatus =
+                                        data['feeStatus']?.toString() ??
+                                        'Pending';
+
+                                    final String accountStatus =
+                                        data['accountStatus']?.toString() ??
+                                        'Inactive';
+
+                                    final String profilePhoto =
+                                        data['profilePhoto']?.toString() ?? '';
+
+                                    return ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
                                           ),
-                                        ),
 
-                                        backgroundColor: feeStatus == 'Paid'
-                                            ? successColor.withValues(
-                                                alpha: 0.2,
-                                              )
-                                            : errorColor.withValues(alpha: 0.2),
+                                      leading: _buildProfileAvatar(
+                                        profilePhoto,
+                                        firstName,
+                                        lastName,
                                       ),
 
-                                      const SizedBox(width: 8),
-
-                                      Chip(
-                                        label: Text(
-                                          accountStatus,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.white,
-                                          ),
+                                      title: Text(
+                                        '$firstName $lastName',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
                                         ),
-
-                                        backgroundColor:
-                                            accountStatus == 'Active'
-                                            ? primaryColor.withValues(
-                                                alpha: 0.2,
-                                              )
-                                            : Colors.grey.withValues(
-                                                alpha: 0.2,
-                                              ),
                                       ),
 
-                                      const SizedBox(width: 8),
-
-                                      PopupMenuButton<String>(
-                                        icon: const Icon(
-                                          Icons.more_vert,
+                                      subtitle: Text(
+                                        'ID: $studentId • Course: $course • Phone: $phone',
+                                        style: const TextStyle(
                                           color: textSecondary,
+                                          fontSize: 13,
                                         ),
+                                      ),
 
-                                        color: cardColor,
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
 
-                                        onSelected: (value) {
-                                          if (value == 'view') {
-                                            _showStudentDetailsModal(
-                                              context,
-                                              data,
-                                            );
-                                          }
+                                        children: [
+                                          Chip(
+                                            label: Text(
+                                              feeStatus,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.white,
+                                              ),
+                                            ),
 
-                                          if (value == 'edit') {
-                                            _showAddOrEditStudentDialog(
-                                              context,
-                                              docId: docId,
-                                              existingData: data,
-                                            );
-                                          }
+                                            backgroundColor: feeStatus == 'Paid'
+                                                ? successColor.withValues(
+                                                    alpha: 0.2,
+                                                  )
+                                                : errorColor.withValues(
+                                                    alpha: 0.2,
+                                                  ),
+                                          ),
 
-                                          if (value == 'toggle') {
-                                            _confirmToggleAccountStatus(
-                                              context,
-                                              docId,
+                                          const SizedBox(width: 8),
+
+                                          Chip(
+                                            label: Text(
                                               accountStatus,
-                                            );
-                                          }
-
-                                          if (value == 'delete') {
-                                            _showDeleteAccountDialog(
-                                              context,
-                                              docId,
-                                              data,
-                                            );
-                                          }
-                                        },
-
-                                        itemBuilder: (context) => [
-                                          const PopupMenuItem(
-                                            value: 'view',
-                                            child: Text(
-                                              'View Details',
-                                              style: TextStyle(
+                                              style: const TextStyle(
+                                                fontSize: 11,
                                                 color: Colors.white,
                                               ),
                                             ),
+
+                                            backgroundColor:
+                                                accountStatus == 'Active'
+                                                ? primaryColor.withValues(
+                                                    alpha: 0.2,
+                                                  )
+                                                : Colors.grey.withValues(
+                                                    alpha: 0.2,
+                                                  ),
                                           ),
 
-                                          const PopupMenuItem(
-                                            value: 'edit',
-                                            child: Text(
-                                              'Edit Student',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
+                                          const SizedBox(width: 8),
 
-                                          PopupMenuItem(
-                                            value: 'toggle',
-                                            child: Text(
-                                              accountStatus == 'Active'
-                                                  ? 'Deactivate'
-                                                  : 'Activate',
-                                              style: TextStyle(
-                                                color: accountStatus == 'Active'
-                                                    ? errorColor
-                                                    : successColor,
-                                              ),
+                                          PopupMenuButton<String>(
+                                            icon: const Icon(
+                                              Icons.more_vert,
+                                              color: textSecondary,
                                             ),
-                                          ),
 
-                                          const PopupMenuItem(
-                                            value: 'delete',
-                                            child: Text(
-                                              'Delete Account',
-                                              style: TextStyle(
-                                                color: errorColor,
+                                            color: cardColor,
+
+                                            onSelected: (value) {
+                                              if (value == 'view') {
+                                                _showStudentDetailsModal(
+                                                  context,
+                                                  data,
+                                                );
+                                              }
+
+                                              if (value == 'edit') {
+                                                _showAddOrEditStudentDialog(
+                                                  context,
+                                                  docId: docId,
+                                                  existingData: data,
+                                                );
+                                              }
+
+                                              if (value == 'toggle') {
+                                                _confirmToggleAccountStatus(
+                                                  context,
+                                                  docId,
+                                                  accountStatus,
+                                                );
+                                              }
+
+                                              if (value == 'delete') {
+                                                _showDeleteAccountDialog(
+                                                  context,
+                                                  docId,
+                                                  data,
+                                                );
+                                              }
+                                            },
+
+                                            itemBuilder: (context) => [
+                                              const PopupMenuItem(
+                                                value: 'view',
+                                                child: Text(
+                                                  'View Details',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
+
+                                              const PopupMenuItem(
+                                                value: 'edit',
+                                                child: Text(
+                                                  'Edit Student',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+
+                                              PopupMenuItem(
+                                                value: 'toggle',
+                                                child: Text(
+                                                  accountStatus == 'Active'
+                                                      ? 'Deactivate'
+                                                      : 'Activate',
+                                                  style: TextStyle(
+                                                    color:
+                                                        accountStatus ==
+                                                            'Active'
+                                                        ? errorColor
+                                                        : successColor,
+                                                  ),
+                                                ),
+                                              ),
+
+                                              const PopupMenuItem(
+                                                value: 'delete',
+                                                child: Text(
+                                                  'Delete Account',
+                                                  style: TextStyle(
+                                                    color: errorColor,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
+                  );
+                },
+              ); // LayoutBuilder
+            }, // ValueListenableBuilder builder
+          ); // ValueListenableBuilder
+        }, // StreamBuilder builder
+      ), // StreamBuilder
+    ); // Scaffold
   }
 
   // ============================================================

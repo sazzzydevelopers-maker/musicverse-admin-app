@@ -220,8 +220,8 @@ class _AdminShellState extends State<AdminShell> {
                 Container(
                   width: 70,
                   height: 70,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF27204D),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF27204D),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
