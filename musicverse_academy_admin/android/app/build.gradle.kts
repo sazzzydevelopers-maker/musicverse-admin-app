@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.musicverse.musicverse_academy_admin"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
