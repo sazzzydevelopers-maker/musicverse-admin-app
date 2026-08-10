@@ -62,7 +62,7 @@ class _AdminShellState extends State<AdminShell> {
 
           // MOBILE / TABLET MENU BUTTON
           Positioned(
-            top: 5,
+            top: 12,
             left: 8,
             child: Builder(
               builder: (context) {
@@ -76,8 +76,8 @@ class _AdminShellState extends State<AdminShell> {
                       Scaffold.of(context).openDrawer();
                     },
                     child: const SizedBox(
-                      width: 45,
-                      height: 45,
+                      width: 48,
+                      height: 48,
                       child: Icon(
                         Icons.menu_rounded,
                         color: Colors.white,
