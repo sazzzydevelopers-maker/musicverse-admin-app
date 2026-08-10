@@ -92,56 +92,92 @@ class DashboardScreen extends StatelessWidget {
   PreferredSizeWidget _buildAppBar(BuildContext context, String adminName) {
     return PreferredSize(
       preferredSize: const Size.fromHeight(64),
+
       child: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
+
+          final bool isVerySmall = width < 360;
           final bool isSmall = width < 600;
 
           return AppBar(
             backgroundColor: cardColor,
             elevation: 0,
             automaticallyImplyLeading: false,
-            titleSpacing: isSmall ? 12 : 20,
+
+            // Space reserved for the existing 3-line
+            // menu button from AdminShell.
+            titleSpacing: isVerySmall
+                ? 58
+                : isSmall
+                ? 64
+                : 90,
 
             title: Row(
+              mainAxisSize: MainAxisSize.max,
               children: [
-                if (isSmall) ...[
-                  const Icon(Icons.music_note, color: primaryColor, size: 22),
-                  const SizedBox(width: 8),
-                ],
+                // ==================================================
+                // MUSIC ICON
+                // ==================================================
+                Icon(
+                  Icons.music_note,
+                  color: primaryColor,
+                  size: isVerySmall ? 18 : 22,
+                ),
 
-                Flexible(
-                  child: Text(
-                    isSmall ? 'MusicVerse' : 'MusicVerse Academy Admin',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 17,
+                SizedBox(width: isVerySmall ? 8 : 10),
+
+                // ==================================================
+                // MUSICVERSE ACADEMY ADMIN
+                // ==================================================
+                const Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+
+                    child: Text(
+                      'MusicVerse Academy Admin',
+
+                      maxLines: 2,
+                      softWrap: false,
+
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
 
+            // ======================================================
+            // ACTIONS
+            // ======================================================
             actions: [
               IconButton(
                 tooltip: 'Notifications',
+
                 icon: const Icon(
                   Icons.notifications_outlined,
                   color: textSecondary,
                 ),
+
                 onPressed: () {},
               ),
 
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
+
                 child: CircleAvatar(
                   radius: isSmall ? 18 : 20,
+
                   backgroundColor: primaryColor,
+
                   child: Text(
                     adminName.isNotEmpty ? adminName[0].toUpperCase() : 'A',
+
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -152,7 +188,9 @@ class DashboardScreen extends StatelessWidget {
 
               IconButton(
                 tooltip: 'Logout',
+
                 icon: const Icon(Icons.logout, color: Colors.white),
+
                 onPressed: () => _logout(context),
               ),
 
@@ -197,18 +235,24 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildHeader(String adminName, bool isVerySmall, bool isSmall) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+
       children: [
         Text(
           'Welcome back, $adminName',
+
           maxLines: 2,
+
           overflow: TextOverflow.ellipsis,
+
           style: TextStyle(
             color: Colors.white,
+
             fontSize: isVerySmall
                 ? 20
                 : isSmall
                 ? 23
                 : 28,
+
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -217,8 +261,11 @@ class DashboardScreen extends StatelessWidget {
 
         const Text(
           "Here is the overview of your academy's status today.",
+
           maxLines: 3,
+
           overflow: TextOverflow.ellipsis,
+
           style: TextStyle(color: textSecondary, fontSize: 14),
         ),
       ],
@@ -235,10 +282,12 @@ class DashboardScreen extends StatelessWidget {
   ) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('user').snapshots(),
+
       builder: (context, userSnapshot) {
         if (userSnapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(30),
+
             child: Center(
               child: CircularProgressIndicator(color: primaryColor),
             ),
@@ -253,10 +302,12 @@ class DashboardScreen extends StatelessWidget {
           stream: FirebaseFirestore.instance
               .collection('feePayments')
               .snapshots(),
+
           builder: (context, paymentSnapshot) {
             if (paymentSnapshot.connectionState == ConnectionState.waiting) {
               return const Padding(
                 padding: EdgeInsets.all(30),
+
                 child: Center(
                   child: CircularProgressIndicator(color: primaryColor),
                 ),
@@ -268,6 +319,7 @@ class DashboardScreen extends StatelessWidget {
             }
 
             final studentDocs = userSnapshot.data?.docs ?? [];
+
             final paymentDocs = paymentSnapshot.data?.docs ?? [];
 
             int activeStudents = 0;
@@ -303,8 +355,6 @@ class DashboardScreen extends StatelessWidget {
 
             final totalStudents = studentDocs.length;
 
-            // "Pending Fees" means every student who has not completed
-            // the current month's payment: Pending + Not Paid.
             final pendingFees = pendingStudents + notPaidStudents;
 
             final width = constraints.maxWidth;
@@ -328,24 +378,28 @@ class DashboardScreen extends StatelessWidget {
                 color: primaryColor,
                 icon: Icons.people_alt_outlined,
               ),
+
               _buildStatCard(
                 title: 'Active Students',
                 value: activeStudents.toString(),
                 color: successColor,
                 icon: Icons.check_circle_outline,
               ),
+
               _buildStatCard(
                 title: 'Inactive Students',
                 value: inactiveStudents.toString(),
                 color: errorColor,
                 icon: Icons.cancel_outlined,
               ),
+
               _buildStatCard(
                 title: 'Paid Students',
                 value: paidStudents.toString(),
                 color: secondaryColor,
                 icon: Icons.payment_outlined,
               ),
+
               _buildStatCard(
                 title: 'Pending Fees',
                 value: pendingFees.toString(),
@@ -359,6 +413,7 @@ class DashboardScreen extends StatelessWidget {
                 children: [
                   for (int i = 0; i < cards.length; i++) ...[
                     SizedBox(width: double.infinity, child: cards[i]),
+
                     if (i != cards.length - 1) const SizedBox(height: 12),
                   ],
                 ],
@@ -367,14 +422,20 @@ class DashboardScreen extends StatelessWidget {
 
             return GridView.builder(
               shrinkWrap: true,
+
               physics: const NeverScrollableScrollPhysics(),
+
               itemCount: cards.length,
+
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: columns,
+
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
+
                 mainAxisExtent: 112,
               ),
+
               itemBuilder: (context, index) {
                 return cards[index];
               },
@@ -403,7 +464,9 @@ class DashboardScreen extends StatelessWidget {
 
       decoration: BoxDecoration(
         color: cardColor,
+
         borderRadius: BorderRadius.circular(14),
+
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
 
@@ -412,12 +475,17 @@ class DashboardScreen extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+
               mainAxisAlignment: MainAxisAlignment.center,
+
               children: [
                 Text(
                   title,
+
                   maxLines: 2,
+
                   overflow: TextOverflow.ellipsis,
+
                   style: const TextStyle(color: textSecondary, fontSize: 13),
                 ),
 
@@ -425,6 +493,7 @@ class DashboardScreen extends StatelessWidget {
 
                 Text(
                   value,
+
                   style: TextStyle(
                     color: color,
                     fontSize: 24,
@@ -453,9 +522,11 @@ class DashboardScreen extends StatelessWidget {
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+
       children: [
         const Text(
           'Payment Overview',
+
           style: TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -467,11 +538,13 @@ class DashboardScreen extends StatelessWidget {
 
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('user').snapshots(),
+
           builder: (context, userSnapshot) {
             if (userSnapshot.connectionState == ConnectionState.waiting) {
               return const ContainerCard(
                 child: Padding(
                   padding: EdgeInsets.all(20),
+
                   child: Center(
                     child: CircularProgressIndicator(color: primaryColor),
                   ),
@@ -487,12 +560,14 @@ class DashboardScreen extends StatelessWidget {
               stream: FirebaseFirestore.instance
                   .collection('feePayments')
                   .snapshots(),
+
               builder: (context, paymentSnapshot) {
                 if (paymentSnapshot.connectionState ==
                     ConnectionState.waiting) {
                   return const ContainerCard(
                     child: Padding(
                       padding: EdgeInsets.all(20),
+
                       child: Center(
                         child: CircularProgressIndicator(color: primaryColor),
                       ),
@@ -505,6 +580,7 @@ class DashboardScreen extends StatelessWidget {
                 }
 
                 final studentDocs = userSnapshot.data?.docs ?? [];
+
                 final paymentDocs = paymentSnapshot.data?.docs ?? [];
 
                 int paidCount = 0;
@@ -527,6 +603,7 @@ class DashboardScreen extends StatelessWidget {
                 }
 
                 final totalStudents = studentDocs.length;
+
                 final bool isSmall = constraints.maxWidth < 600;
 
                 final metrics = [
@@ -535,16 +612,19 @@ class DashboardScreen extends StatelessWidget {
                     totalStudents.toString(),
                     Colors.white,
                   ),
+
                   _buildPaymentMetric(
                     'Paid Students',
                     paidCount.toString(),
                     successColor,
                   ),
+
                   _buildPaymentMetric(
                     'Pending Students',
                     pendingCount.toString(),
                     warningColor,
                   ),
+
                   _buildPaymentMetric(
                     'Not Paid',
                     notPaidCount.toString(),
@@ -558,6 +638,7 @@ class DashboardScreen extends StatelessWidget {
                           children: [
                             for (int i = 0; i < metrics.length; i++) ...[
                               metrics[i],
+
                               if (i != metrics.length - 1)
                                 const SizedBox(height: 20),
                             ],
@@ -585,9 +666,11 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildPaymentMetric(String title, String value, Color color) {
     return Column(
       mainAxisSize: MainAxisSize.min,
+
       children: [
         Text(
           value,
+
           style: TextStyle(
             color: color,
             fontSize: 22,
@@ -599,9 +682,13 @@ class DashboardScreen extends StatelessWidget {
 
         Text(
           title,
+
           textAlign: TextAlign.center,
+
           maxLines: 2,
+
           overflow: TextOverflow.ellipsis,
+
           style: const TextStyle(color: textSecondary, fontSize: 12),
         ),
       ],
@@ -618,9 +705,11 @@ class DashboardScreen extends StatelessWidget {
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+
       children: [
         const Text(
           'Recent Students',
+
           style: TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -641,6 +730,7 @@ class DashboardScreen extends StatelessWidget {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Padding(
                 padding: EdgeInsets.all(30),
+
                 child: Center(
                   child: CircularProgressIndicator(color: primaryColor),
                 ),
@@ -658,6 +748,7 @@ class DashboardScreen extends StatelessWidget {
                 child: Center(
                   child: Text(
                     'No students found',
+
                     style: TextStyle(color: textSecondary),
                   ),
                 ),
@@ -668,11 +759,13 @@ class DashboardScreen extends StatelessWidget {
               stream: FirebaseFirestore.instance
                   .collection('feePayments')
                   .snapshots(),
+
               builder: (context, paymentSnapshot) {
                 if (paymentSnapshot.connectionState ==
                     ConnectionState.waiting) {
                   return const Padding(
                     padding: EdgeInsets.all(30),
+
                     child: Center(
                       child: CircularProgressIndicator(color: primaryColor),
                     ),
@@ -691,9 +784,13 @@ class DashboardScreen extends StatelessWidget {
                       for (int i = 0; i < studentDocs.length; i++)
                         _buildStudentItem(
                           context,
+
                           studentDocs[i].data() as Map<String, dynamic>,
+
                           constraints,
+
                           i == studentDocs.length - 1,
+
                           currentPaymentStatus: _getCurrentPaymentStatus(
                             studentDocs[i],
                             paymentDocs,
@@ -748,9 +845,11 @@ class DashboardScreen extends StatelessWidget {
 
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
+
             children: [
               _buildProfilePhoto(profilePhoto, fullName),
 
@@ -759,11 +858,15 @@ class DashboardScreen extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+
                   children: [
                     Text(
                       fullName.isEmpty ? 'Unnamed Student' : fullName,
+
                       maxLines: 1,
+
                       overflow: TextOverflow.ellipsis,
+
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -775,8 +878,11 @@ class DashboardScreen extends StatelessWidget {
 
                     Text(
                       'ID: $studentId',
+
                       maxLines: 1,
+
                       overflow: TextOverflow.ellipsis,
+
                       style: const TextStyle(
                         color: textSecondary,
                         fontSize: 12,
@@ -787,8 +893,11 @@ class DashboardScreen extends StatelessWidget {
 
                     Text(
                       'Course: $course',
+
                       maxLines: 1,
+
                       overflow: TextOverflow.ellipsis,
+
                       style: const TextStyle(
                         color: textSecondary,
                         fontSize: 12,
@@ -807,6 +916,7 @@ class DashboardScreen extends StatelessWidget {
 
                 _buildStatusChip(
                   accountStatus,
+
                   accountStatus.toLowerCase() == 'active'
                       ? successColor
                       : Colors.grey,
@@ -821,11 +931,13 @@ class DashboardScreen extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
+
               children: [
                 _buildStatusChip(feeStatusText, feeStatusColor),
 
                 _buildStatusChip(
                   accountStatus,
+
                   accountStatus.toLowerCase() == 'active'
                       ? successColor
                       : Colors.grey,
@@ -836,6 +948,7 @@ class DashboardScreen extends StatelessWidget {
 
           if (!isLast) ...[
             const SizedBox(height: 8),
+
             const Divider(color: Colors.white12, height: 1),
           ],
         ],
@@ -854,11 +967,15 @@ class DashboardScreen extends StatelessWidget {
     final studentData = studentDoc.data() as Map<String, dynamic>;
 
     final studentId = studentData['studentId']?.toString().trim() ?? '';
+
     final uid = studentData['uid']?.toString().trim() ?? '';
+
     final documentId = studentDoc.id.trim();
 
     final now = DateTime.now();
+
     final currentYear = now.year;
+
     final currentMonth = now.month;
 
     for (final paymentDoc in paymentDocs) {
@@ -870,6 +987,7 @@ class DashboardScreen extends StatelessWidget {
 
       final paymentStudentId =
           paymentData['studentId']?.toString().trim() ?? '';
+
       final paymentUid = paymentData['uid']?.toString().trim() ?? '';
 
       final sameStudent =
@@ -886,9 +1004,12 @@ class DashboardScreen extends StatelessWidget {
       }
     }
 
-    // A student with no current-month payment record is NOT PAID.
     return 'notPaid';
   }
+
+  // ============================================================
+  // PAYMENT MONTH CHECK
+  // ============================================================
 
   bool _isPaymentForMonth(Map<String, dynamic> data, int year, int month) {
     final paymentYear = _parseInt(data['paymentYear']);
@@ -930,7 +1051,6 @@ class DashboardScreen extends StatelessWidget {
       return true;
     }
 
-    // Fallback for payment documents that only contain paymentDate.
     final paymentDate = _readDateTime(data['paymentDate']);
 
     if (paymentDate != null) {
@@ -939,6 +1059,10 @@ class DashboardScreen extends StatelessWidget {
 
     return false;
   }
+
+  // ============================================================
+  // NORMALIZE PAYMENT STATUS
+  // ============================================================
 
   String _normalizePaymentStatus(dynamic value) {
     final status = value?.toString().trim().toLowerCase() ?? '';
@@ -961,27 +1085,43 @@ class DashboardScreen extends StatelessWidget {
     }
   }
 
+  // ============================================================
+  // PAYMENT LABEL
+  // ============================================================
+
   String _paymentStatusLabel(String status) {
     switch (status) {
       case 'paid':
         return 'Paid';
+
       case 'pending':
         return 'Pending';
+
       default:
         return 'Not Paid';
     }
   }
 
+  // ============================================================
+  // PAYMENT COLOR
+  // ============================================================
+
   Color _paymentStatusColor(String status) {
     switch (status) {
       case 'paid':
         return successColor;
+
       case 'pending':
         return warningColor;
+
       default:
         return errorColor;
     }
   }
+
+  // ============================================================
+  // PARSE INT
+  // ============================================================
 
   int? _parseInt(dynamic value) {
     if (value is int) {
@@ -990,6 +1130,10 @@ class DashboardScreen extends StatelessWidget {
 
     return int.tryParse(value?.toString() ?? '');
   }
+
+  // ============================================================
+  // READ DATETIME
+  // ============================================================
 
   DateTime? _readDateTime(dynamic value) {
     if (value is Timestamp) {
@@ -1011,13 +1155,16 @@ class DashboardScreen extends StatelessWidget {
     if (profilePhoto.isNotEmpty) {
       return CircleAvatar(
         radius: 24,
+
         backgroundColor: primaryColor,
 
         child: ClipOval(
           child: Image.network(
             profilePhoto,
+
             width: 48,
             height: 48,
+
             fit: BoxFit.cover,
 
             errorBuilder: (context, error, stackTrace) {
@@ -1048,9 +1195,12 @@ class DashboardScreen extends StatelessWidget {
 
     return CircleAvatar(
       radius: 24,
+
       backgroundColor: primaryColor,
+
       child: Text(
         initials,
+
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
@@ -1080,8 +1230,11 @@ class DashboardScreen extends StatelessWidget {
 
       child: Text(
         text,
+
         maxLines: 1,
+
         overflow: TextOverflow.ellipsis,
+
         style: TextStyle(
           color: color,
           fontSize: 11,
