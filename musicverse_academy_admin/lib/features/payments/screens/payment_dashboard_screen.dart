@@ -23,7 +23,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
     1,
   );
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
+  final FocusNode _searchFocusNode = FocusNode();
   String _selectedStatusFilter = 'All';
 
   // Added: prevents duplicate current-month fee records while the live streams refresh.
@@ -45,6 +45,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -187,368 +188,381 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
               // Missing current-month records are created automatically as Not Paid.
               _scheduleCurrentMonthPaymentSync(students, paymentDocs);
 
-              double totalRevenue = 0;
-              for (final doc in paymentDocs) {
-                final data = doc.data() as Map<String, dynamic>;
-                final status = (data['status'] ?? '')
-                    .toString()
-                    .trim()
-                    .toLowerCase();
+              return ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _searchController,
+                builder: (context, searchValue, child) {
+                  final searchQuery = searchValue.text.trim().toLowerCase();
 
-                if (status == 'paid') {
-                  final amount = data['amountPaid'] is num
-                      ? (data['amountPaid'] as num).toDouble()
-                      : data['monthlyFee'] is num
-                      ? (data['monthlyFee'] as num).toDouble()
-                      : 0.0;
-                  totalRevenue += amount;
-                }
-              }
+                  double totalRevenue = 0;
+                  for (final doc in paymentDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final status = (data['status'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
 
-              for (final doc in paymentDocs) {
-                final data = doc.data() as Map<String, dynamic>;
-                final uid = (data['uid'] ?? '').toString().trim();
-                final studentId = (data['studentId'] ?? '').toString().trim();
-
-                final paymentDate = _timestampToDate(data['paymentDate']);
-                final month = (data['paymentMonth'] ?? '')
-                    .toString()
-                    .toLowerCase();
-                final year = data['paymentYear']?.toString() ?? '';
-
-                final matchesDate =
-                    paymentDate != null &&
-                    paymentDate.year == _selectedMonth.year &&
-                    paymentDate.month == _selectedMonth.month;
-
-                final matchesFields =
-                    month ==
-                        _getMonthName(_selectedMonth.month).toLowerCase() &&
-                    year == _selectedMonth.year.toString();
-
-                if (matchesDate || matchesFields) {
-                  final paymentWithId = {...data, 'docId': doc.id};
-
-                  // Support both uid and studentId so older feePayment
-                  // documents are still linked correctly.
-                  if (uid.isNotEmpty) {
-                    currentPayments[uid] = paymentWithId;
+                    if (status == 'paid') {
+                      final amount = data['amountPaid'] is num
+                          ? (data['amountPaid'] as num).toDouble()
+                          : data['monthlyFee'] is num
+                          ? (data['monthlyFee'] as num).toDouble()
+                          : 0.0;
+                      totalRevenue += amount;
+                    }
                   }
-                  if (studentId.isNotEmpty) {
-                    currentPayments[studentId] = paymentWithId;
-                  }
-                }
-              }
 
-              double monthlyIncome = 0;
-              int paidCount = 0;
-              int pendingCount = 0;
-              int pendingStatusCount = 0;
-              int notPaidCount = 0;
-              int overdueCount = 0;
-              double pendingAmount = 0;
-
-              // Added: total expected fees for every student in the selected month.
-              double totalFees = 0;
-
-              final List<Map<String, dynamic>> filteredList = [];
-
-              for (final studentDoc in students) {
-                final student = studentDoc.data() as Map<String, dynamic>;
-
-                final uid = (student['uid'] ?? studentDoc.id).toString();
-                final studentId = _getStudentId(student);
-
-                final payment =
-                    currentPayments[uid] ??
-                    (studentId == 'Not assigned'
-                        ? null
-                        : currentPayments[studentId]);
-
-                final paid = _isPaidForSelectedMonth(payment);
-                final overdue = _isOverdue(student, payment);
-
-                final fee = payment != null && payment['monthlyFee'] is num
-                    ? (payment['monthlyFee'] as num).toDouble()
-                    : student['monthlyFee'] is num
-                    ? (student['monthlyFee'] as num).toDouble()
-                    : 0.0;
-
-                // Added: every active student contributes their expected
-                // monthly fee to Total Fees for the selected month.
-                totalFees += fee;
-
-                if (paid) {
-                  monthlyIncome += payment?['amountPaid'] is num
-                      ? (payment?['amountPaid'] as num).toDouble()
-                      : fee;
-                  paidCount++;
-                } else {
-                  // Pending Fees remains the total number of unpaid students.
-                  pendingCount++;
-                  pendingAmount += fee;
-
-                  final storedStatus = (payment?['status'] ?? '')
-                      .toString()
-                      .trim()
-                      .toLowerCase();
-
-                  if (overdue || storedStatus == 'overdue') {
-                    overdueCount++;
-                  } else if (storedStatus == 'pending') {
-                    pendingStatusCount++;
-                  } else {
-                    notPaidCount++;
-                  }
-                }
-
-                final firstName = (student['firstName'] ?? '').toString();
-                final lastName = (student['lastName'] ?? '').toString();
-
-                final studentName =
-                    (student['studentName'] ?? '$firstName $lastName')
+                  for (final doc in paymentDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final uid = (data['uid'] ?? '').toString().trim();
+                    final studentId = (data['studentId'] ?? '')
                         .toString()
                         .trim();
 
-                final searchText =
-                    '$studentName $uid ${student['course'] ?? ''} '
-                            '${student['phone'] ?? ''}'
+                    final paymentDate = _timestampToDate(data['paymentDate']);
+                    final month = (data['paymentMonth'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    final year = data['paymentYear']?.toString() ?? '';
+
+                    final matchesDate =
+                        paymentDate != null &&
+                        paymentDate.year == _selectedMonth.year &&
+                        paymentDate.month == _selectedMonth.month;
+
+                    final matchesFields =
+                        month ==
+                            _getMonthName(_selectedMonth.month).toLowerCase() &&
+                        year == _selectedMonth.year.toString();
+
+                    if (matchesDate || matchesFields) {
+                      final paymentWithId = {...data, 'docId': doc.id};
+
+                      // Support both uid and studentId so older feePayment
+                      // documents are still linked correctly.
+                      if (uid.isNotEmpty) {
+                        currentPayments[uid] = paymentWithId;
+                      }
+                      if (studentId.isNotEmpty) {
+                        currentPayments[studentId] = paymentWithId;
+                      }
+                    }
+                  }
+
+                  double monthlyIncome = 0;
+                  int paidCount = 0;
+                  int pendingCount = 0;
+                  int pendingStatusCount = 0;
+                  int notPaidCount = 0;
+                  int overdueCount = 0;
+                  double pendingAmount = 0;
+
+                  // Added: total expected fees for every student in the selected month.
+                  double totalFees = 0;
+
+                  final List<Map<String, dynamic>> filteredList = [];
+
+                  for (final studentDoc in students) {
+                    final student = studentDoc.data() as Map<String, dynamic>;
+
+                    final uid = (student['uid'] ?? studentDoc.id).toString();
+                    final studentId = _getStudentId(student);
+
+                    final payment =
+                        currentPayments[uid] ??
+                        (studentId == 'Not assigned'
+                            ? null
+                            : currentPayments[studentId]);
+
+                    final paid = _isPaidForSelectedMonth(payment);
+                    final overdue = _isOverdue(student, payment);
+
+                    final fee = payment != null && payment['monthlyFee'] is num
+                        ? (payment['monthlyFee'] as num).toDouble()
+                        : student['monthlyFee'] is num
+                        ? (student['monthlyFee'] as num).toDouble()
+                        : 0.0;
+
+                    // Added: every active student contributes their expected
+                    // monthly fee to Total Fees for the selected month.
+                    totalFees += fee;
+
+                    if (paid) {
+                      monthlyIncome += payment?['amountPaid'] is num
+                          ? (payment?['amountPaid'] as num).toDouble()
+                          : fee;
+                      paidCount++;
+                    } else {
+                      // Pending Fees remains the total number of unpaid students.
+                      pendingCount++;
+                      pendingAmount += fee;
+
+                      final storedStatus = (payment?['status'] ?? '')
+                          .toString()
+                          .trim()
+                          .toLowerCase();
+
+                      if (overdue || storedStatus == 'overdue') {
+                        overdueCount++;
+                      } else if (storedStatus == 'pending') {
+                        pendingStatusCount++;
+                      } else {
+                        notPaidCount++;
+                      }
+                    }
+
+                    final firstName = (student['firstName'] ?? '').toString();
+                    final lastName = (student['lastName'] ?? '').toString();
+
+                    final studentName =
+                        (student['studentName'] ?? '$firstName $lastName')
+                            .toString()
+                            .trim();
+
+                    final searchText =
+                        '$studentName $uid ${student['course'] ?? ''} '
+                                '${student['phone'] ?? ''}'
+                            .toLowerCase();
+
+                    final matchesSearch =
+                        searchQuery.isEmpty || searchText.contains(searchQuery);
+
+                    final storedStatus = (payment?['status'] ?? '')
+                        .toString()
+                        .trim()
                         .toLowerCase();
 
-                final matchesSearch =
-                    _searchQuery.isEmpty || searchText.contains(_searchQuery);
+                    final displayStatus = paid
+                        ? 'Paid'
+                        : storedStatus == 'pending'
+                        ? 'Pending'
+                        : storedStatus == 'not paid'
+                        ? 'Not Paid'
+                        : overdue
+                        ? 'Overdue'
+                        : 'Not Paid';
 
-                final storedStatus = (payment?['status'] ?? '')
-                    .toString()
-                    .trim()
-                    .toLowerCase();
+                    final matchesStatus =
+                        _selectedStatusFilter == 'All' ||
+                        displayStatus.toLowerCase() ==
+                            _selectedStatusFilter.toLowerCase();
 
-                final displayStatus = paid
-                    ? 'Paid'
-                    : storedStatus == 'pending'
-                    ? 'Pending'
-                    : storedStatus == 'not paid'
-                    ? 'Not Paid'
-                    : overdue
-                    ? 'Overdue'
-                    : 'Not Paid';
+                    if (matchesSearch && matchesStatus) {
+                      filteredList.add({
+                        ...student,
+                        'docId': studentDoc.id,
+                        'uid': uid,
+                        'studentName': studentName.isEmpty
+                            ? 'Unknown Student'
+                            : studentName,
+                        'monthlyFee': fee,
+                        'payment': payment,
+                        'displayStatus': displayStatus,
+                      });
+                    }
+                  }
 
-                final matchesStatus =
-                    _selectedStatusFilter == 'All' ||
-                    displayStatus.toLowerCase() ==
-                        _selectedStatusFilter.toLowerCase();
+                  final totalStudents = students.length;
 
-                if (matchesSearch && matchesStatus) {
-                  filteredList.add({
-                    ...student,
-                    'docId': studentDoc.id,
-                    'uid': uid,
-                    'studentName': studentName.isEmpty
-                        ? 'Unknown Student'
-                        : studentName,
-                    'monthlyFee': fee,
-                    'payment': payment,
-                    'displayStatus': displayStatus,
-                  });
-                }
-              }
+                  final collectionRate = totalStudents > 0
+                      ? (paidCount / totalStudents) * 100
+                      : 0.0;
 
-              final totalStudents = students.length;
-
-              final collectionRate = totalStudents > 0
-                  ? (paidCount / totalStudents) * 100
-                  : 0.0;
-
-              return AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: SingleChildScrollView(
-                  key: ValueKey(
-                    '${_selectedMonth.year}-${_selectedMonth.month}-'
-                    '$_searchQuery-$_selectedStatusFilter',
-                  ),
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: SingleChildScrollView(
+                      key: ValueKey(
+                        '${_selectedMonth.year}-${_selectedMonth.month}-'
+                        '$_selectedStatusFilter',
+                      ),
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Flexible(
-                            child: Text(
-                              "Track academy revenue, payments and outstanding fees.",
-                              maxLines: 2,
-                              softWrap: true,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: textSecondary,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Existing KPI cards preserved.
-                      GridView.count(
-                        crossAxisCount: MediaQuery.of(context).size.width > 1200
-                            ? 4
-                            : (MediaQuery.of(context).size.width > 700 ? 2 : 1),
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        childAspectRatio: 2.2,
-                        children: [
-                          _buildKpiCard(
-                            "Monthly Income",
-                            "₹${monthlyIncome.toStringAsFixed(0)}",
-                            "${_getMonthName(_selectedMonth.month)} "
-                                "${_selectedMonth.year}",
-                            successColor,
-                            Icons.account_balance_wallet,
-                          ),
-                          _buildKpiCard(
-                            "Total Collected",
-                            "$paidCount Payments",
-                            "Paid records count",
-                            primaryColor,
-                            Icons.check_circle,
-                          ),
-                          _buildKpiCard(
-                            "Pending Fees",
-                            "₹${pendingAmount.toStringAsFixed(0)}",
-                            "$pendingCount unpaid records",
-                            errorColor,
-                            Icons.warning_amber,
-                          ),
-                          _buildKpiCard(
-                            "Collection Rate",
-                            "${collectionRate.toStringAsFixed(1)}%",
-                            "Overall efficiency",
-                            secondaryColor,
-                            Icons.analytics,
-                          ),
-                        ],
-                      ),
-
-                      // Added financial summary cards.
-                      // The original KPI cards above are unchanged.
-                      const SizedBox(height: 16),
-                      _buildFinancialSummarySection(
-                        totalRevenue: totalRevenue,
-                        totalFees: totalFees,
-                        outstandingFees: pendingAmount,
-                      ),
-                      const SizedBox(height: 28),
-
-                      // Existing revenue chart preserved.
-
-                      // Added dynamic payment analytics. These are separate
-                      // from the existing Revenue Trend chart above.
-                      _buildPaymentAnalytics(
-                        paymentDocs: paymentDocs,
-                        paidCount: paidCount,
-                        pendingCount: pendingStatusCount,
-                        notPaidCount: notPaidCount,
-                        overdueCount: overdueCount,
-                        monthlyIncome: monthlyIncome,
-                        totalFees: totalFees,
-                        outstandingFees: pendingAmount,
-                      ),
-                      const SizedBox(height: 28),
-
-                      // Search & Status Filters.
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          SizedBox(
-                            width: 300,
-                            child: TextField(
-                              controller: _searchController,
-                              style: const TextStyle(color: Colors.white),
-                              onChanged: (val) {
-                                setState(() {
-                                  _searchQuery = val.trim().toLowerCase();
-                                });
-                              },
-                              decoration: InputDecoration(
-                                hintText: "Search student name, UID...",
-                                hintStyle: const TextStyle(
-                                  color: textSecondary,
-                                ),
-                                prefixIcon: const Icon(
-                                  Icons.search,
-                                  color: textSecondary,
-                                ),
-                                suffixIcon: _searchQuery.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        icon: const Icon(
-                                          Icons.clear,
-                                          color: textSecondary,
-                                        ),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                          setState(() {
-                                            _searchQuery = '';
-                                          });
-                                        },
-                                      ),
-                                filled: true,
-                                fillColor: cardColor,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
+                          const Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  "Track academy revenue, payments and outstanding fees.",
+                                  maxLines: 2,
+                                  softWrap: true,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: textSecondary,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                          _buildFilterDropdown(),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+                          const SizedBox(height: 24),
 
-                      // Each student now has a payment action menu.
-                      Container(
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: cardColor,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: filteredList.isEmpty
-                            ? const Padding(
-                                padding: EdgeInsets.all(40.0),
-                                child: Center(
-                                  child: Text(
-                                    "No payment records found for selected period.",
-                                    style: TextStyle(
+                          // Existing KPI cards preserved.
+                          GridView.count(
+                            crossAxisCount:
+                                MediaQuery.of(context).size.width > 1200
+                                ? 4
+                                : (MediaQuery.of(context).size.width > 700
+                                      ? 2
+                                      : 1),
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            childAspectRatio: 2.2,
+                            children: [
+                              _buildKpiCard(
+                                "Monthly Income",
+                                "₹${monthlyIncome.toStringAsFixed(0)}",
+                                "${_getMonthName(_selectedMonth.month)} "
+                                    "${_selectedMonth.year}",
+                                successColor,
+                                Icons.account_balance_wallet,
+                              ),
+                              _buildKpiCard(
+                                "Total Collected",
+                                "$paidCount Payments",
+                                "Paid records count",
+                                primaryColor,
+                                Icons.check_circle,
+                              ),
+                              _buildKpiCard(
+                                "Pending Fees",
+                                "₹${pendingAmount.toStringAsFixed(0)}",
+                                "$pendingCount unpaid records",
+                                errorColor,
+                                Icons.warning_amber,
+                              ),
+                              _buildKpiCard(
+                                "Collection Rate",
+                                "${collectionRate.toStringAsFixed(1)}%",
+                                "Overall efficiency",
+                                secondaryColor,
+                                Icons.analytics,
+                              ),
+                            ],
+                          ),
+
+                          // Added financial summary cards.
+                          // The original KPI cards above are unchanged.
+                          const SizedBox(height: 16),
+                          _buildFinancialSummarySection(
+                            totalRevenue: totalRevenue,
+                            totalFees: totalFees,
+                            outstandingFees: pendingAmount,
+                          ),
+                          const SizedBox(height: 28),
+
+                          // Existing revenue chart preserved.
+
+                          // Added dynamic payment analytics. These are separate
+                          // from the existing Revenue Trend chart above.
+                          _buildPaymentAnalytics(
+                            paymentDocs: paymentDocs,
+                            paidCount: paidCount,
+                            pendingCount: pendingStatusCount,
+                            notPaidCount: notPaidCount,
+                            overdueCount: overdueCount,
+                            monthlyIncome: monthlyIncome,
+                            totalFees: totalFees,
+                            outstandingFees: pendingAmount,
+                          ),
+                          const SizedBox(height: 28),
+
+                          // Search & Status Filters.
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              SizedBox(
+                                width: 300,
+                                child: TextField(
+                                  controller: _searchController,
+                                  focusNode: _searchFocusNode,
+                                  style: const TextStyle(color: Colors.white),
+                                  onChanged: (_) {
+                                    // Do not call setState here.
+                                    // The controller itself is a Listenable and
+                                    // ValueListenableBuilder below updates only
+                                    // the payment results area.
+                                  },
+                                  decoration: InputDecoration(
+                                    hintText: "Search student name, UID...",
+                                    hintStyle: const TextStyle(
                                       color: textSecondary,
-                                      fontSize: 16,
+                                    ),
+                                    prefixIcon: const Icon(
+                                      Icons.search,
+                                      color: textSecondary,
+                                    ),
+                                    suffixIcon: searchQuery.isEmpty
+                                        ? null
+                                        : IconButton(
+                                            icon: const Icon(
+                                              Icons.clear,
+                                              color: textSecondary,
+                                            ),
+                                            onPressed: () {
+                                              _searchController.clear();
+                                              _searchFocusNode.requestFocus();
+                                            },
+                                          ),
+                                    filled: true,
+                                    fillColor: cardColor,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: BorderSide.none,
                                     ),
                                   ),
                                 ),
-                              )
-                            : ListView.separated(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: filteredList.length,
-                                separatorBuilder: (context, index) =>
-                                    const Divider(
-                                      color: Colors.white12,
-                                      height: 1,
-                                    ),
-                                itemBuilder: (context, index) {
-                                  return _buildStudentPaymentTile(
-                                    filteredList[index],
-                                  );
-                                },
                               ),
+                              _buildFilterDropdown(),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Each student now has a payment action menu.
+                          Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: filteredList.isEmpty
+                                ? const Padding(
+                                    padding: EdgeInsets.all(40.0),
+                                    child: Center(
+                                      child: Text(
+                                        "No payment records found for selected period.",
+                                        style: TextStyle(
+                                          color: textSecondary,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: filteredList.length,
+                                    separatorBuilder: (context, index) =>
+                                        const Divider(
+                                          color: Colors.white12,
+                                          height: 1,
+                                        ),
+                                    itemBuilder: (context, index) {
+                                      return _buildStudentPaymentTile(
+                                        filteredList[index],
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               );
             },
           );
@@ -578,178 +592,348 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
         ? errorColor
         : warningColor;
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: CircleAvatar(
-        backgroundColor: primaryColor,
+    Widget buildPaymentMenu() {
+      return PopupMenuButton<String>(
+        enabled: isActive,
+        tooltip: isActive
+            ? "Payment options"
+            : "Payment controls locked for inactive student",
+        icon: Icon(
+          isActive ? Icons.more_vert : Icons.lock_rounded,
+          color: isActive ? textSecondary : errorColor,
+        ),
+        color: cardColor,
+        onSelected: isActive
+            ? (value) {
+                _handlePaymentAction(value, item);
+              }
+            : null,
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'edit_fee',
+            child: Text(
+              "Edit Monthly Fee",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'payment_method',
+            child: Text(
+              "Edit Payment Method",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          if (status != 'Paid')
+            const PopupMenuItem(
+              value: 'mark_paid',
+              child: Text(
+                "Mark as Paid",
+                style: TextStyle(color: successColor),
+              ),
+            ),
+          const PopupMenuItem(
+            value: 'change_status',
+            child: Text(
+              "Edit Payment Status",
+              style: TextStyle(color: warningColor),
+            ),
+          ),
+          if (status == 'Paid')
+            const PopupMenuItem(
+              value: 'receipt',
+              child: Text(
+                "View Receipt",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          if (status == 'Paid')
+            const PopupMenuItem(
+              value: 'download_pdf',
+              child: Text(
+                "Download Receipt PDF",
+                style: TextStyle(color: successColor),
+              ),
+            ),
+          const PopupMenuItem(
+            value: 'history',
+            child: Text(
+              "Payment History",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget buildStatusBadge() {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+        decoration: BoxDecoration(
+          color: statusColor.withValues(alpha: 0.11),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: statusColor.withValues(alpha: 0.42)),
+        ),
         child: Text(
-          _initials(name),
-          style: const TextStyle(
-            color: Colors.white,
+          status,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: statusColor,
             fontWeight: FontWeight.bold,
+            fontSize: 12,
           ),
         ),
-      ),
-      title: Text(
-        name,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      subtitle: Column(
+      );
+    }
+
+    Widget buildDetails() {
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            "ID: $studentId",
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: textSecondary,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
           const SizedBox(height: 3),
           Text(
-            "ID: $studentId • Course: $course • Phone: $phone",
-            style: const TextStyle(color: textSecondary, fontSize: 12),
+            "Course: $course",
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: textSecondary,
+              fontSize: 12,
+              height: 1.35,
+            ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 3),
+          Text(
+            "Phone: $phone",
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: textSecondary,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 7),
           Wrap(
-            spacing: 8,
-            runSpacing: 4,
+            spacing: 7,
+            runSpacing: 6,
             children: [
-              Text(
+              _buildPaymentInfoChip(
                 "${_getMonthName(_selectedMonth.month)} "
                 "${_selectedMonth.year}",
-                style: const TextStyle(color: textSecondary, fontSize: 12),
+                Icons.calendar_month_rounded,
               ),
-              Text(
+              _buildPaymentInfoChip(
                 "Monthly Fee: ₹${fee.toStringAsFixed(0)}",
-                style: const TextStyle(color: textSecondary, fontSize: 12),
+                Icons.payments_rounded,
               ),
               if (payment != null &&
                   (payment['paymentMethod'] ?? '').toString().isNotEmpty)
-                Text(
-                  "• ${(payment['paymentMethod']).toString().toUpperCase()}",
-                  style: const TextStyle(color: textSecondary, fontSize: 12),
+                _buildPaymentInfoChip(
+                  (payment['paymentMethod']).toString().toUpperCase(),
+                  Icons.account_balance_wallet_rounded,
                 ),
               if (payment != null &&
                   (payment['receiptNumber'] ?? '').toString().isNotEmpty)
-                Text(
-                  "• Receipt: "
-                  "${payment['receiptNumber']}",
-                  style: const TextStyle(color: textSecondary, fontSize: 12),
+                _buildPaymentInfoChip(
+                  "Receipt: ${payment['receiptNumber']}",
+                  Icons.receipt_long_rounded,
                 ),
-              const SizedBox(height: 7),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildAccountAccessBadge(isActive),
-                  if (!isActive) ...[
-                    const SizedBox(width: 7),
-                    const Text(
-                      'Payment controls locked',
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _buildAccountAccessBadge(isActive),
+              if (!isActive)
+                const Text(
+                  'Payment controls locked',
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
             ],
           ),
         ],
-      ),
-      trailing: SizedBox(
-        width: 190,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final isCompact = width < 700;
+
+        final avatar = Container(
+          width: isCompact ? 48 : 54,
+          height: isCompact ? 48 : 54,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [primaryColor, secondaryColor],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: primaryColor.withValues(alpha: 0.22),
+                blurRadius: 14,
+                spreadRadius: 1,
               ),
-              child: Text(
-                status,
-                style: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              _initials(name),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: isCompact ? 15 : 16,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(width: 4),
-            // ADDED: inactive students cannot open or execute payment actions.
-            // Their existing fee/payment records remain visible.
-            PopupMenuButton<String>(
-              enabled: isActive,
-              tooltip: isActive
-                  ? "Payment options"
-                  : "Payment controls locked for inactive student",
-              icon: Icon(
-                isActive ? Icons.more_vert : Icons.lock_rounded,
-                color: isActive ? textSecondary : errorColor,
+          ),
+        );
+
+        final nameWidget = Text(
+          name,
+          maxLines: isCompact ? 2 : 1,
+          softWrap: true,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: isCompact ? 17 : 16,
+            height: 1.15,
+            fontWeight: FontWeight.w800,
+          ),
+        );
+
+        final desktopLayout = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            avatar,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  nameWidget,
+                  const SizedBox(height: 9),
+                  buildDetails(),
+                ],
               ),
-              color: cardColor,
-              onSelected: isActive
-                  ? (value) {
-                      _handlePaymentAction(value, item);
-                    }
-                  : null,
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'edit_fee',
-                  child: Text(
-                    "Edit Monthly Fee",
-                    style: TextStyle(color: Colors.white),
+            ),
+            const SizedBox(width: 18),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 110, maxWidth: 145),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  buildStatusBadge(),
+                  const SizedBox(height: 9),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildAccountAccessBadge(isActive),
+                      const SizedBox(width: 2),
+                      buildPaymentMenu(),
+                    ],
                   ),
-                ),
-                const PopupMenuItem(
-                  value: 'payment_method',
-                  child: Text(
-                    "Edit Payment Method",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-                if (status != 'Paid')
-                  const PopupMenuItem(
-                    value: 'mark_paid',
-                    child: Text(
-                      "Mark as Paid",
-                      style: TextStyle(color: successColor),
-                    ),
-                  ),
-                const PopupMenuItem(
-                  value: 'change_status',
-                  child: Text(
-                    "Edit Payment Status",
-                    style: TextStyle(color: warningColor),
-                  ),
-                ),
-                if (status == 'Paid')
-                  const PopupMenuItem(
-                    value: 'receipt',
-                    child: Text(
-                      "View Receipt",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                if (status == 'Paid')
-                  const PopupMenuItem(
-                    value: 'download_pdf',
-                    child: Text(
-                      "Download Receipt PDF",
-                      style: TextStyle(color: successColor),
-                    ),
-                  ),
-                const PopupMenuItem(
-                  value: 'history',
-                  child: Text(
-                    "Payment History",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
-        ),
+        );
+
+        final mobileLayout = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                avatar,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: nameWidget,
+                  ),
+                ),
+                const SizedBox(width: 7),
+                buildPaymentMenu(),
+              ],
+            ),
+            const SizedBox(height: 14),
+            buildDetails(),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [Expanded(child: buildStatusBadge())],
+            ),
+          ],
+        );
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          width: double.infinity,
+          margin: EdgeInsets.zero,
+          padding: EdgeInsets.symmetric(
+            horizontal: isCompact ? 16 : 20,
+            vertical: isCompact ? 17 : 18,
+          ),
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(isCompact ? 16 : 14),
+          ),
+          child: isCompact ? mobileLayout : desktopLayout,
+        );
+      },
+    );
+  }
+
+  Widget _buildPaymentInfoChip(String text, IconData icon) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 300),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: secondaryColor, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: textSecondary,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1678,61 +1862,15 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
       return;
     }
 
-    final controller = TextEditingController(
-      text: (item['monthlyFee'] ?? 0).toString(),
-    );
-
     final value = await showDialog<double>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: cardColor,
-          title: const Text(
-            "Edit Monthly Fee",
-            style: TextStyle(color: Colors.white),
-          ),
-          content: TextField(
-            controller: controller,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            autofocus: true,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              prefixText: "₹ ",
-              prefixStyle: const TextStyle(color: textSecondary),
-              hintText: "Monthly fee",
-              hintStyle: const TextStyle(color: textSecondary),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: primaryColor.withValues(alpha: 0.4),
-                ),
-              ),
-              focusedBorder: const OutlineInputBorder(
-                borderSide: BorderSide(color: primaryColor),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                "Cancel",
-                style: TextStyle(color: textSecondary),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-              onPressed: () {
-                final parsed = double.tryParse(controller.text.trim());
-                Navigator.pop(context, parsed);
-              },
-              child: const Text("Save", style: TextStyle(color: Colors.white)),
-            ),
-          ],
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return _EditMonthlyFeeDialog(
+          initialFee: (item['monthlyFee'] ?? 0).toString(),
         );
       },
     );
-
-    controller.dispose();
 
     if (value == null || value < 0) {
       return;
@@ -3600,7 +3738,13 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
           mainAxisSpacing: 16,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: width > 650 ? 2.35 : 3.6,
+          childAspectRatio: width > 1200
+              ? 2.5
+              : width > 800
+              ? 2.0
+              : width > 500
+              ? 1.65
+              : 1.55,
           children: [
             _buildFinancialCard(
               title: 'Total Revenue',
@@ -3800,6 +3944,102 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+class _EditMonthlyFeeDialog extends StatefulWidget {
+  const _EditMonthlyFeeDialog({required this.initialFee});
+
+  final String initialFee;
+
+  @override
+  State<_EditMonthlyFeeDialog> createState() => _EditMonthlyFeeDialogState();
+}
+
+class _EditMonthlyFeeDialogState extends State<_EditMonthlyFeeDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialFee);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final text = _controller.text.trim();
+    final parsed = double.tryParse(text);
+
+    if (parsed == null || parsed < 0) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: _PaymentDashboardScreenState.cardColor,
+      title: const Text(
+        "Edit Monthly Fee",
+        style: TextStyle(color: Colors.white),
+      ),
+      content: TextField(
+        controller: _controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        autofocus: true,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          prefixText: "₹ ",
+          prefixStyle: const TextStyle(
+            color: _PaymentDashboardScreenState.textSecondary,
+          ),
+          hintText: "Monthly fee",
+          hintStyle: const TextStyle(
+            color: _PaymentDashboardScreenState.textSecondary,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(
+              color: _PaymentDashboardScreenState.primaryColor.withValues(
+                alpha: 0.4,
+              ),
+            ),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderSide: BorderSide(
+              color: _PaymentDashboardScreenState.primaryColor,
+            ),
+          ),
+        ),
+        onSubmitted: (_) => _save(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            Navigator.of(context).pop();
+          },
+          child: const Text(
+            "Cancel",
+            style: TextStyle(color: _PaymentDashboardScreenState.textSecondary),
+          ),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _PaymentDashboardScreenState.primaryColor,
+          ),
+          onPressed: _save,
+          child: const Text("Save", style: TextStyle(color: Colors.white)),
+        ),
+      ],
     );
   }
 }
