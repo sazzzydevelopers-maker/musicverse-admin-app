@@ -1,0 +1,28 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "musicverse_academy_admin",
+            "cwd": "musicverse_academy_admin",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "musicverse_academy_admin (profile mode)",
+            "cwd": "musicverse_academy_admin",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "musicverse_academy_admin (release mode)",
+            "cwd": "musicverse_academy_admin",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}

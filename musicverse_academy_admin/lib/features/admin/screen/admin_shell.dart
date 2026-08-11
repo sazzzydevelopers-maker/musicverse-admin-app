@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../../academic class/academic_classes_dashboard_screen.dart';
 import '../../attendance/screens/attendance_dashboard_screen.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../students/screens/student_management_screen.dart';
@@ -25,6 +25,10 @@ class _AdminShellState extends State<AdminShell> {
     _AdminNavigationItem(
       title: 'Attendance',
       icon: Icons.calendar_month_outlined,
+    ),
+    _AdminNavigationItem(
+      title: 'Academic Classes',
+      icon: Icons.event_note_outlined,
     ),
     _AdminNavigationItem(title: 'Practice', icon: Icons.flag_outlined),
     _AdminNavigationItem(title: 'Assignments', icon: Icons.assignment_outlined),
@@ -185,7 +189,7 @@ class _AdminShellState extends State<AdminShell> {
 
         // Currently implemented sections.
         final bool isImplemented =
-            index == 0 || index == 1 || index == 4 || index == 5;
+            index == 0 || index == 1 || index == 4 || index == 5 || index == 6;
 
         final bool isSelected = _selectedIndex == index;
 
@@ -292,6 +296,9 @@ class _AdminShellState extends State<AdminShell> {
 
       case 5:
         return const AttendanceDashboardScreen();
+
+      case 6:
+        return const AcademicClassesDashboardScreen();
 
       default:
         return const DashboardScreen();
