@@ -122,6 +122,8 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
         title: const Text(
           'Attendance Management',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
 
@@ -394,18 +396,24 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                         // ==================================================
                         // HEADER
                         // ==================================================
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
+                        Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 16,
+                          runSpacing: 12,
                           children: [
-                            const Text(
-                              'Manage and monitor daily student attendance.',
-                              style: TextStyle(
-                                color: textSecondary,
-                                fontSize: 14,
+                            const SizedBox(
+                              width: 360,
+                              child: Text(
+                                'Manage and monitor daily student attendance.',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: textSecondary,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
-
                             _buildDateSelector(),
                           ],
                         ),
@@ -478,7 +486,9 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
 
                           children: [
                             SizedBox(
-                              width: isDesktop ? 300 : double.infinity,
+                              width: isDesktop
+                                  ? 360
+                                  : constraints.maxWidth - 48,
 
                               child: TextField(
                                 controller: _searchController,
@@ -646,8 +656,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                               width: double.infinity,
 
                               decoration: BoxDecoration(
-                                color: cardColor,
-
+                                color: Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
                               ),
 
@@ -665,19 +674,13 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                         ),
                                       ),
                                     )
-                                  : ListView.separated(
+                                  : ListView.builder(
                                       shrinkWrap: true,
 
                                       physics:
                                           const NeverScrollableScrollPhysics(),
 
                                       itemCount: filteredStudents.length,
-
-                                      separatorBuilder: (context, index) =>
-                                          const Divider(
-                                            color: Colors.white12,
-                                            height: 1,
-                                          ),
 
                                       itemBuilder: (context, index) {
                                         final data = filteredStudents[index];
@@ -727,202 +730,40 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                                   ? errorColor
                                                   : warningColor);
 
-                                        return ListTile(
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 16,
-                                                vertical: 8,
-                                              ),
+                                        final bool isWideStudentRow =
+                                            constraints.maxWidth >= 900;
 
-                                          leading: profilePhoto.isNotEmpty
-                                              ? CircleAvatar(
-                                                  backgroundImage: NetworkImage(
-                                                    profilePhoto,
-                                                  ),
-                                                )
-                                              : const CircleAvatar(
-                                                  backgroundColor: primaryColor,
+                                        final String phone =
+                                            (data['phone'] ??
+                                                    data['phoneNumber'] ??
+                                                    'N/A')
+                                                .toString();
 
-                                                  child: Icon(
-                                                    Icons.person,
-                                                    color: Colors.white,
-                                                  ),
-                                                ),
+                                        final String email =
+                                            (data['email'] ?? '').toString();
 
-                                          title: Text(
-                                            studentName.isEmpty
-                                                ? 'Unnamed Student'
-                                                : studentName,
+                                        final double percentage =
+                                            _calculatePercentage(
+                                              presentDays,
+                                              _toInt(data['totalDays']),
+                                            );
 
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-
-                                          subtitle: Text(
-                                            'ID: $studentId • '
-                                            'Course: $course • '
-                                            'Present: $presentDays | '
-                                            'Absent: $absentDays',
-
-                                            style: const TextStyle(
-                                              color: textSecondary,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-
-                                          trailing: Row(
-                                            mainAxisSize: MainAxisSize.min,
-
-                                            children: [
-                                              // ==================================================
-                                              // ATTENDANCE STATUS
-                                              // ==================================================
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 14,
-                                                      vertical: 8,
-                                                    ),
-
-                                                decoration: BoxDecoration(
-                                                  color: statusColor.withValues(
-                                                    alpha: 0.14,
-                                                  ),
-
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-
-                                                  border: Border.all(
-                                                    color: statusColor
-                                                        .withValues(
-                                                          alpha: 0.35,
-                                                        ),
-                                                  ),
-                                                ),
-
-                                                child: Text(
-                                                  status,
-
-                                                  style: TextStyle(
-                                                    color: statusColor,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                                ),
-                                              ),
-
-                                              const SizedBox(width: 8),
-
-                                              // ==================================================
-                                              // ACTIVE / INACTIVE
-                                              // ==================================================
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 7,
-                                                    ),
-
-                                                decoration: BoxDecoration(
-                                                  color: isStudentActive
-                                                      ? successColor.withValues(
-                                                          alpha: 0.10,
-                                                        )
-                                                      : errorColor.withValues(
-                                                          alpha: 0.10,
-                                                        ),
-
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-
-                                                  border: Border.all(
-                                                    color: isStudentActive
-                                                        ? successColor
-                                                              .withValues(
-                                                                alpha: 0.30,
-                                                              )
-                                                        : errorColor.withValues(
-                                                            alpha: 0.30,
-                                                          ),
-                                                  ),
-                                                ),
-
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-
-                                                  children: [
-                                                    Icon(
-                                                      isStudentActive
-                                                          ? Icons.check_circle
-                                                          : Icons.block,
-
-                                                      size: 14,
-
-                                                      color: isStudentActive
-                                                          ? successColor
-                                                          : errorColor,
-                                                    ),
-
-                                                    const SizedBox(width: 5),
-
-                                                    Text(
-                                                      accountStatus,
-
-                                                      style: TextStyle(
-                                                        color: isStudentActive
-                                                            ? successColor
-                                                            : errorColor,
-                                                        fontSize: 12,
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-
-                                              const SizedBox(width: 8),
-
-                                              // ==================================================
-                                              // ATTENDANCE EDIT
-                                              //
-                                              // ACTIVE:
-                                              // Admin can change attendance.
-                                              //
-                                              // INACTIVE:
-                                              // Attendance editing is locked.
-                                              // ==================================================
-                                              IconButton(
-                                                tooltip: isStudentActive
-                                                    ? 'Change attendance'
-                                                    : 'Inactive student - attendance locked',
-
-                                                icon: Icon(
-                                                  isStudentActive
-                                                      ? Icons
-                                                            .edit_calendar_rounded
-                                                      : Icons
-                                                            .lock_outline_rounded,
-
-                                                  color: isStudentActive
-                                                      ? textSecondary
-                                                      : Colors.white24,
-                                                ),
-
-                                                onPressed: isStudentActive
-                                                    ? () {
-                                                        _showAttendanceChangeDialog(
-                                                          data,
-                                                          status,
-                                                        );
-                                                      }
-                                                    : null,
-                                              ),
-                                            ],
-                                          ),
+                                        return _buildResponsiveStudentCard(
+                                          data: data,
+                                          studentName: studentName,
+                                          studentId: studentId,
+                                          course: course,
+                                          phone: phone,
+                                          email: email,
+                                          status: status,
+                                          accountStatus: accountStatus,
+                                          isStudentActive: isStudentActive,
+                                          profilePhoto: profilePhoto,
+                                          statusColor: statusColor,
+                                          presentDays: presentDays,
+                                          absentDays: absentDays,
+                                          percentage: percentage,
+                                          isWide: isWideStudentRow,
                                         );
                                       },
                                     ),
@@ -937,6 +778,348 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
             },
           );
         },
+      ),
+    );
+  }
+
+  // ============================================================
+  // RESPONSIVE STUDENT CARD
+  //
+  // Existing attendance/database logic is unchanged.
+  // Only the presentation changes:
+  // large screens = horizontal row
+  // small screens = stacked card
+  // ============================================================
+
+  Widget _buildResponsiveStudentCard({
+    required Map<String, dynamic> data,
+    required String studentName,
+    required String studentId,
+    required String course,
+    required String phone,
+    required String email,
+    required String status,
+    required String accountStatus,
+    required bool isStudentActive,
+    required String profilePhoto,
+    required Color statusColor,
+    required int presentDays,
+    required int absentDays,
+    required double percentage,
+    required bool isWide,
+  }) {
+    final String selectedDateLabel =
+        '${_selectedDate.day} ${_getMonthName(_selectedDate.month)} '
+        '${_selectedDate.year}';
+
+    final IconData attendanceIcon = status == 'Present'
+        ? Icons.check_circle_rounded
+        : status == 'Absent'
+        ? Icons.cancel_rounded
+        : Icons.pending_rounded;
+
+    final Widget avatar = profilePhoto.isNotEmpty
+        ? CircleAvatar(radius: 30, backgroundImage: NetworkImage(profilePhoto))
+        : const CircleAvatar(
+            radius: 30,
+            backgroundColor: primaryColor,
+            child: Icon(Icons.person_rounded, color: Colors.white, size: 31),
+          );
+
+    final Widget header = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        avatar,
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                studentName.isEmpty ? 'Unnamed Student' : studentName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                studentId,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: isStudentActive
+              ? 'Change attendance'
+              : 'Inactive student - attendance locked',
+          icon: Icon(
+            isStudentActive ? Icons.more_vert_rounded : Icons.lock_rounded,
+            color: isStudentActive ? textSecondary : errorColor,
+            size: 25,
+          ),
+          onPressed: isStudentActive
+              ? () {
+                  _showAttendanceChangeDialog(data, status);
+                }
+              : null,
+        ),
+      ],
+    );
+
+    final Widget details = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _buildMiniInfoChip(
+          Icons.music_note_rounded,
+          course.isEmpty ? 'Course not set' : course,
+          primaryColor,
+        ),
+        _buildMiniInfoChip(
+          Icons.phone_rounded,
+          phone.isEmpty ? 'Phone not set' : phone,
+          textSecondary,
+        ),
+        if (email.trim().isNotEmpty)
+          _buildMiniInfoChip(Icons.email_outlined, email, textSecondary),
+      ],
+    );
+
+    final Widget dateChip = _buildMiniInfoChip(
+      Icons.calendar_month_rounded,
+      selectedDateLabel,
+      primaryColor,
+    );
+
+    final Widget attendanceBanner = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: statusColor.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(attendanceIcon, color: statusColor, size: 21),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              'Attendance: $status',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          if (isStudentActive)
+            TextButton(
+              onPressed: () {
+                _showAttendanceChangeDialog(data, status);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: statusColor,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Edit',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            )
+          else
+            const Text(
+              'Locked',
+              style: TextStyle(
+                color: errorColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+        ],
+      ),
+    );
+
+    final Widget accountBadge = _buildStatusBadge(
+      accountStatus,
+      isStudentActive ? successColor : errorColor,
+      isStudentActive ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+    );
+
+    final Widget statistics = Row(
+      children: [
+        Expanded(
+          child: _buildAttendanceMetric(
+            'Present',
+            presentDays.toString(),
+            successColor,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildAttendanceMetric(
+            'Absent',
+            absentDays.toString(),
+            errorColor,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildAttendanceMetric(
+            'Percentage',
+            '${percentage.toStringAsFixed(1)}%',
+            primaryColor,
+          ),
+        ),
+      ],
+    );
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: statusColor.withValues(alpha: 0.14)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header,
+          const SizedBox(height: 15),
+          details,
+          const SizedBox(height: 10),
+          dateChip,
+          const SizedBox(height: 14),
+          attendanceBanner,
+          const SizedBox(height: 12),
+          if (isWide)
+            Row(
+              children: [
+                Expanded(child: statistics),
+                const SizedBox(width: 12),
+                accountBadge,
+              ],
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [statistics, const SizedBox(height: 10), accountBadge],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceMetric(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.025),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniInfoChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String label, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 15),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1094,14 +1277,19 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
               }
             },
 
-            child: Text(
-              '${selectedDateOnly.day} '
-              '${_getMonthName(selectedDateOnly.month)}, '
-              '${selectedDateOnly.year}',
-
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 180),
+              child: Text(
+                '${selectedDateOnly.day} '
+                '${_getMonthName(selectedDateOnly.month)}, '
+                '${selectedDateOnly.year}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
