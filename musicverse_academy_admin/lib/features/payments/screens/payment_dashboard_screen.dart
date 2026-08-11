@@ -370,17 +370,21 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      const Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            "Track academy revenue, payments and outstanding fees.",
-                            style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 14,
+                          Flexible(
+                            child: Text(
+                              "Track academy revenue, payments and outstanding fees.",
+                              maxLines: 2,
+                              softWrap: true,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 14,
+                              ),
                             ),
                           ),
-                          _buildMonthSelector(),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -3596,7 +3600,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
           mainAxisSpacing: 16,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: width > 650 ? 2.35 : 2.6,
+          childAspectRatio: width > 650 ? 2.35 : 3.6,
           children: [
             _buildFinancialCard(
               title: 'Total Revenue',
