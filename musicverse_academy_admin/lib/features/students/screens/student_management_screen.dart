@@ -1054,6 +1054,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       'Drums',
       'Flute',
       'Violin',
+      'Vocals',
     ];
 
     final String? existingCourse = existingData?['course']?.toString().trim();
@@ -2035,15 +2036,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   // ============================================================
   // GENERATE STUDENT ID
   // ============================================================
-
   String _generateStudentId() {
+    final int year = DateTime.now().year;
     final Random random = Random();
 
-    // Eight random digits: 10000000 - 99999999.
-    // Example: SZYD-STD-483721
-    final int number = 10000000 + random.nextInt(90000000);
+    final int number = 100000 + random.nextInt(900000);
 
-    return 'SZYD-STD-$number';
+    return 'SZYD-STD-$year$number';
   }
 
   // ============================================================
