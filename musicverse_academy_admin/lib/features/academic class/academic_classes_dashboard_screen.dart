@@ -13,15 +13,11 @@ class _AcademicClassesDashboardScreenState
     extends State<AcademicClassesDashboardScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _classesStream;
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _classesStream;
 
-  DateTime _displayedMonth = DateTime(
-    DateTime.now().year,
-    DateTime.now().month,
-  );
+  // The calendar owns its month/selected-date state so clicking a date
+  // rebuilds only the calendar, not the whole dashboard.
   DateTime? _selectedDate;
-
-  List<Map<String, dynamic>> _currentClasses = [];
 
   final Color _background = const Color(0xFF0B0F20);
   final Color _card = const Color(0xFF171C35);
@@ -53,10 +49,6 @@ class _AcademicClassesDashboardScreenState
 
   DateTime _dateOnly(DateTime date) {
     return DateTime(date.year, date.month, date.day);
-  }
-
-  bool _sameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   DateTime _toDate(dynamic value) {
@@ -150,62 +142,17 @@ class _AcademicClassesDashboardScreenState
     await _classesCollection.get(const GetOptions(source: Source.server));
   }
 
-  void _previousMonth() {
-    setState(() {
-      _displayedMonth = DateTime(
-        _displayedMonth.year,
-        _displayedMonth.month - 1,
-      );
-    });
-  }
-
-  void _nextMonth() {
-    setState(() {
-      _displayedMonth = DateTime(
-        _displayedMonth.year,
-        _displayedMonth.month + 1,
-      );
-    });
-  }
-
-  void _goToToday() {
-    final now = DateTime.now();
-
-    setState(() {
-      _displayedMonth = DateTime(now.year, now.month);
-      _selectedDate = _dateOnly(now);
-    });
-  }
-
-  List<DateTime> _calendarDays() {
-    final firstDay = DateTime(_displayedMonth.year, _displayedMonth.month, 1);
-
-    final lastDay = DateTime(
-      _displayedMonth.year,
-      _displayedMonth.month + 1,
-      0,
-    );
-
-    final daysBeforeMonday = firstDay.weekday - 1;
-    final start = firstDay.subtract(Duration(days: daysBeforeMonday));
-    final totalCells = ((daysBeforeMonday + lastDay.day) / 7).ceil() * 7;
-
-    return List.generate(
-      totalCells,
-      (index) => _dateOnly(start.add(Duration(days: index))),
-    );
-  }
-
   Future<void> _openDateDialog(
     DateTime date,
     List<Map<String, dynamic>> classes,
+    List<Map<String, dynamic>> allClasses,
   ) async {
     // Monthly totals are calculated from the same Firestore data already
     // loaded by the dashboard. No extra Firestore query is required.
     // Get all currently loaded classes from the calendar stream by using
     // the date-specific list plus the full dashboard data is handled below
     // through the cached snapshot passed into this dialog.
-    final monthlyClasses = _currentClasses.where((data) {
+    final monthlyClasses = allClasses.where((data) {
       final classDate = _dateOnly(_toDate(data['date']));
       return classDate.year == date.year && classDate.month == date.month;
     }).toList();
@@ -218,9 +165,9 @@ class _AcademicClassesDashboardScreenState
       return total;
     });
 
-    await showDialog(
+    final action = await showDialog<_DateDialogAction>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return _DateClassesDialog(
           date: date,
           classes: classes,
@@ -230,25 +177,50 @@ class _AcademicClassesDashboardScreenState
           statusIcon: _statusIcon,
           statusLabel: _statusLabel,
           formatTime: _formatTime,
-          onAdd: () async {
-            // Close the date dialog first, then open the editor.
-            // After saving/cancelling, the user returns to the dashboard.
-            Navigator.of(context).pop();
-            await _showClassEditor(date: date);
+
+          onAdd: () {
+            Navigator.of(dialogContext).pop(_DateDialogAction.add());
           },
+
           onEdit: (data) async {
-            Navigator.of(context).pop();
-            await _showClassEditor(date: date, existingData: data);
+            Navigator.of(dialogContext).pop(_DateDialogAction.edit(data));
           },
+
+          // DELETE
           onDelete: (data) async {
-            await _deleteClass(data);
+            // Close the Classes popup immediately.
+            if (dialogContext.mounted) {
+              Navigator.of(dialogContext).pop();
+            }
+
+            // Delete from Firestore in the background.
+            _deleteClass(data);
           },
+
+          // STATUS: Scheduled / Completed / Cancelled
           onStatusChange: (data, status) async {
-            await _updateStatus(data, status);
+            // Close the Classes popup immediately.
+            if (dialogContext.mounted) {
+              Navigator.of(dialogContext).pop();
+            }
+
+            // Update Firestore in the background.
+            _updateStatus(data, status);
           },
         );
       },
     );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    if (action.type == _DateDialogActionType.add) {
+      await _showClassEditor(date: date);
+    } else if (action.type == _DateDialogActionType.edit &&
+        action.data != null) {
+      await _showClassEditor(date: date, existingData: action.data);
+    }
   }
 
   Future<void> _showClassEditor({
@@ -307,7 +279,7 @@ class _AcademicClassesDashboardScreenState
       selectedCourse = 'All Courses';
     }
 
-    await showDialog(
+    final result = await showDialog<_ClassEditorResult>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
@@ -436,10 +408,11 @@ class _AcademicClassesDashboardScreenState
                           ),
                           IconButton(
                             onPressed: () {
+                              // Close ONLY the class editor dialog.
+                              // Do not use rootNavigator here.
                               Navigator.of(
                                 dialogContext,
-                                rootNavigator: true,
-                              ).pop();
+                              ).pop(_ClassEditorResult.cancelled());
                             },
                             icon: Icon(
                               Icons.close_rounded,
@@ -759,8 +732,7 @@ class _AcademicClassesDashboardScreenState
                                     onPressed: () {
                                       Navigator.of(
                                         dialogContext,
-                                        rootNavigator: true,
-                                      ).pop();
+                                      ).pop(_ClassEditorResult.cancelled());
                                     },
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: _secondaryText,
@@ -807,8 +779,7 @@ class _AcademicClassesDashboardScreenState
                                   onPressed: () {
                                     Navigator.of(
                                       dialogContext,
-                                      rootNavigator: true,
-                                    ).pop();
+                                    ).pop(_ClassEditorResult.cancelled());
                                   },
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: _secondaryText,
@@ -857,9 +828,27 @@ class _AcademicClassesDashboardScreenState
       },
     );
 
+    // The dialog is completely gone at this point. It is now safe to dispose
+    // its controllers and update the parent screen.
     classIdController.dispose();
     teacherController.dispose();
     studentCountController.dispose();
+
+    if (!mounted || result == null || !result.saved) {
+      return;
+    }
+
+    _selectedDate = result.date;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isEditing
+              ? 'Class updated successfully.'
+              : 'Class added successfully.',
+        ),
+      ),
+    );
   }
 
   Widget _saveButton(
@@ -884,18 +873,24 @@ class _AcademicClassesDashboardScreenState
             teacher.isEmpty ||
             students == null ||
             students < 0) {
-          ScaffoldMessenger.of(dialogContext).showSnackBar(
-            const SnackBar(
-              content: Text('Please complete all required fields.'),
-            ),
-          );
+          if (dialogContext.mounted) {
+            ScaffoldMessenger.of(dialogContext).showSnackBar(
+              const SnackBar(
+                content: Text('Please complete all required fields.'),
+              ),
+            );
+          }
           return;
         }
 
         if (!endTime.isAfter(startTime)) {
-          ScaffoldMessenger.of(dialogContext).showSnackBar(
-            const SnackBar(content: Text('End time must be after start time.')),
-          );
+          if (dialogContext.mounted) {
+            ScaffoldMessenger.of(dialogContext).showSnackBar(
+              const SnackBar(
+                content: Text('End time must be after start time.'),
+              ),
+            );
+          }
           return;
         }
 
@@ -951,28 +946,15 @@ class _AcademicClassesDashboardScreenState
             });
           }
 
+          // IMPORTANT:
+          // Return the result and let _showClassEditor() handle the
+          // snackbar AFTER showDialog() has completely closed.
           if (dialogContext.mounted) {
-            Navigator.of(dialogContext, rootNavigator: true).pop(true);
-          }
-
-          // Keep the calendar on the date/month that was just saved.
-          if (mounted) {
-            setState(() {
-              _displayedMonth = DateTime(date.year, date.month);
-              _selectedDate = date;
-            });
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  isEditing
-                      ? 'Class updated successfully.'
-                      : 'Class added successfully.',
-                ),
-              ),
-            );
+            Navigator.of(dialogContext).pop(_ClassEditorResult.saved(date));
           }
         } catch (e) {
+          // Only show an error while the dialog is still mounted.
+          // Never use this context after Navigator.pop().
           if (dialogContext.mounted) {
             ScaffoldMessenger.of(
               dialogContext,
@@ -1205,155 +1187,17 @@ class _AcademicClassesDashboardScreenState
   }
 
   Widget _buildCalendar(List<Map<String, dynamic>> classes, double width) {
-    final days = _calendarDays();
-
-    final classesByDate = <String, List<Map<String, dynamic>>>{};
-
-    for (final data in classes) {
-      final date = _dateOnly(_toDate(data['date']));
-      final key = '${date.year}-${date.month}-${date.day}';
-
-      classesByDate.putIfAbsent(key, () => []);
-      classesByDate[key]!.add(data);
-    }
-
-    final calendarWidth = width > 900 ? 760.0 : width;
-
-    return Container(
-      width: double.infinity,
-      constraints: BoxConstraints(maxWidth: calendarWidth),
-      padding: EdgeInsets.all(width < 500 ? 14 : 22),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: _purple.withValues(alpha: 0.14)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: _purple.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(Icons.calendar_month_rounded, color: _purpleLight),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '${_monthName(_displayedMonth.month)} ${_displayedMonth.year}',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: _text,
-                    fontSize: width < 500 ? 18 : 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Previous month',
-                onPressed: _previousMonth,
-                icon: Icon(Icons.chevron_left_rounded, color: _secondaryText),
-              ),
-              IconButton(
-                tooltip: 'Today',
-                onPressed: _goToToday,
-                icon: Icon(Icons.today_rounded, color: _purpleLight),
-              ),
-              IconButton(
-                tooltip: 'Next month',
-                onPressed: _nextMonth,
-                icon: Icon(Icons.chevron_right_rounded, color: _secondaryText),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Row(
-            children: [
-              _WeekDay(label: 'MON'),
-              _WeekDay(label: 'TUE'),
-              _WeekDay(label: 'WED'),
-              _WeekDay(label: 'THU'),
-              _WeekDay(label: 'FRI'),
-              _WeekDay(label: 'SAT'),
-              _WeekDay(label: 'SUN'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: days.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-              mainAxisExtent: 58,
-            ),
-            itemBuilder: (context, index) {
-              final date = days[index];
-              final key = '${date.year}-${date.month}-${date.day}';
-              final dayClasses = classesByDate[key] ?? [];
-              final isCurrentMonth = date.month == _displayedMonth.month;
-              final isToday = _sameDay(date, DateTime.now());
-              final isSelected =
-                  _selectedDate != null && _sameDay(date, _selectedDate!);
-
-              return _CalendarDay(
-                date: date,
-                isCurrentMonth: isCurrentMonth,
-                isToday: isToday,
-                isSelected: isSelected,
-                classes: dayClasses,
-                statusColor: _statusColor,
-                onTap: () {
-                  setState(() {
-                    _selectedDate = date;
-                  });
-
-                  _openDateDialog(date, dayClasses);
-                },
-              );
-            },
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 18,
-            runSpacing: 10,
-            children: [
-              _legend(_green, 'Scheduled'),
-              _legend(_yellow, 'Completed'),
-              _legend(_red, 'Cancelled'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _legend(Color color, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 9,
-          height: 9,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 7),
-        Text(
-          text,
-          style: TextStyle(
-            color: _secondaryText,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
+    return _AcademicCalendar(
+      classes: classes,
+      width: width,
+      initialSelectedDate: _selectedDate,
+      statusColor: _statusColor,
+      onDateSelected: (date, dayClasses) {
+        // Do not call setState here. The calendar manages its own selected
+        // state. The parent only remembers the date for the Add Class button.
+        _selectedDate = date;
+        _openDateDialog(date, dayClasses, classes);
+      },
     );
   }
 
@@ -1474,8 +1318,6 @@ class _AcademicClassesDashboardScreenState
                 }).toList() ??
                 [];
 
-            _currentClasses = classes;
-
             return LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
@@ -1521,7 +1363,7 @@ class _AcademicClassesDashboardScreenState
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
-        horizontal: width < 500 ? 16 : 28,
+        horizontal: width < 450 ? 16 : 28,
         vertical: 16,
       ),
       decoration: BoxDecoration(
@@ -1600,6 +1442,345 @@ class _AcademicClassesDashboardScreenState
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AcademicCalendar extends StatefulWidget {
+  final List<Map<String, dynamic>> classes;
+  final double width;
+  final DateTime? initialSelectedDate;
+  final Color Function(String status) statusColor;
+  final void Function(DateTime date, List<Map<String, dynamic>> dayClasses)
+  onDateSelected;
+
+  const _AcademicCalendar({
+    required this.classes,
+    required this.width,
+    required this.initialSelectedDate,
+    required this.statusColor,
+    required this.onDateSelected,
+  });
+
+  @override
+  State<_AcademicCalendar> createState() => _AcademicCalendarState();
+}
+
+class _AcademicCalendarState extends State<_AcademicCalendar> {
+  late DateTime _displayedMonth;
+  DateTime? _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final initial = widget.initialSelectedDate ?? DateTime.now();
+
+    _selectedDate = DateTime(initial.year, initial.month, initial.day);
+
+    _displayedMonth = DateTime(initial.year, initial.month);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AcademicCalendar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Do not reset _displayedMonth or _selectedDate when Firestore sends
+    // an update. This is the important part that prevents the calendar
+    // from jumping/reloading after Add/Edit/Delete.
+  }
+
+  DateTime _dateOnly(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  bool _sameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  DateTime _toDate(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    return DateTime.now();
+  }
+
+  String _monthName(int month) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    return months[month - 1];
+  }
+
+  List<DateTime> _calendarDays() {
+    final firstDay = DateTime(_displayedMonth.year, _displayedMonth.month, 1);
+
+    final lastDay = DateTime(
+      _displayedMonth.year,
+      _displayedMonth.month + 1,
+      0,
+    );
+
+    final daysBeforeMonday = firstDay.weekday - 1;
+    final start = firstDay.subtract(Duration(days: daysBeforeMonday));
+
+    final totalCells = ((daysBeforeMonday + lastDay.day) / 7).ceil() * 7;
+
+    return List.generate(
+      totalCells,
+      (index) => _dateOnly(start.add(Duration(days: index))),
+    );
+  }
+
+  void _previousMonth() {
+    setState(() {
+      _displayedMonth = DateTime(
+        _displayedMonth.year,
+        _displayedMonth.month - 1,
+      );
+    });
+  }
+
+  void _nextMonth() {
+    setState(() {
+      _displayedMonth = DateTime(
+        _displayedMonth.year,
+        _displayedMonth.month + 1,
+      );
+    });
+  }
+
+  void _goToToday() {
+    final now = DateTime.now();
+
+    setState(() {
+      _displayedMonth = DateTime(now.year, now.month);
+      _selectedDate = _dateOnly(now);
+    });
+  }
+
+  String _classKey(DateTime date) {
+    return '${date.year}-${date.month}-${date.day}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final days = _calendarDays();
+
+    final classesByDate = <String, List<Map<String, dynamic>>>{};
+
+    for (final data in widget.classes) {
+      final date = _dateOnly(_toDate(data['date']));
+      classesByDate.putIfAbsent(
+        _classKey(date),
+        () => <Map<String, dynamic>>[],
+      );
+      classesByDate[_classKey(date)]!.add(data);
+    }
+
+    final calendarWidth = widget.width > 900 ? 760.0 : widget.width;
+
+    return Container(
+      width: double.infinity,
+      constraints: BoxConstraints(maxWidth: calendarWidth),
+      padding: EdgeInsets.all(widget.width < 500 ? 14 : 22),
+      decoration: BoxDecoration(
+        color: const Color(0xFF171C35),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: const Color(0xFF7C4DFF).withValues(alpha: 0.14),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ============================================================
+          // MONTH HEADER
+          // ============================================================
+          Row(
+            children: [
+              Container(
+                width: widget.width < 500 ? 42 : 46,
+                height: widget.width < 500 ? 42 : 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C4DFF).withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(
+                  Icons.calendar_month_rounded,
+                  color: Color(0xFF9D6BFF),
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              Expanded(
+                child: Text(
+                  // The year ALWAYS comes from _displayedMonth.
+                  // No hard-coded year.
+                  '${_monthName(_displayedMonth.month)} '
+                  '${_displayedMonth.year}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: widget.width < 500 ? 18 : 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+
+              IconButton(
+                tooltip: 'Previous month',
+                onPressed: _previousMonth,
+                icon: const Icon(
+                  Icons.chevron_left_rounded,
+                  color: Color(0xFFB0B5D3),
+                ),
+              ),
+
+              IconButton(
+                tooltip: 'Current month',
+                onPressed: _goToToday,
+                icon: const Icon(Icons.today_rounded, color: Color(0xFF9D6BFF)),
+              ),
+
+              IconButton(
+                tooltip: 'Next month',
+                onPressed: _nextMonth,
+                icon: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFFB0B5D3),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // ============================================================
+          // WEEK DAYS
+          // ============================================================
+          const Row(
+            children: [
+              _WeekDay(label: 'MON'),
+              _WeekDay(label: 'TUE'),
+              _WeekDay(label: 'WED'),
+              _WeekDay(label: 'THU'),
+              _WeekDay(label: 'FRI'),
+              _WeekDay(label: 'SAT'),
+              _WeekDay(label: 'SUN'),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // ============================================================
+          // CALENDAR
+          //
+          // mainAxisExtent is used instead of childAspectRatio.
+          // This gives every cell a predictable height and prevents
+          // the "BOTTOM OVERFLOWED BY 2.1 PIXELS" error.
+          // ============================================================
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: days.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+              mainAxisExtent: 58,
+            ),
+            itemBuilder: (context, index) {
+              final date = days[index];
+
+              final dayClasses = classesByDate[_classKey(date)] ?? [];
+
+              final isCurrentMonth =
+                  date.month == _displayedMonth.month &&
+                  date.year == _displayedMonth.year;
+
+              final isToday = _sameDay(date, DateTime.now());
+
+              final isSelected =
+                  _selectedDate != null && _sameDay(date, _selectedDate!);
+
+              return _CalendarDay(
+                date: date,
+                isCurrentMonth: isCurrentMonth,
+                isToday: isToday,
+                isSelected: isSelected,
+                classes: dayClasses,
+                statusColor: widget.statusColor,
+                onTap: () {
+                  // Only THIS calendar widget rebuilds.
+                  setState(() {
+                    _selectedDate = date;
+                  });
+
+                  widget.onDateSelected(date, dayClasses);
+                },
+              );
+            },
+          ),
+
+          const SizedBox(height: 18),
+
+          // ============================================================
+          // LEGEND
+          // ============================================================
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 18,
+            runSpacing: 10,
+            children: [
+              _calendarLegend(const Color(0xFF00E676), 'Scheduled'),
+              _calendarLegend(const Color(0xFFFFC107), 'Completed'),
+              _calendarLegend(const Color(0xFFFF5252), 'Cancelled'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _calendarLegend(Color color, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 7),
+        Text(
+          text,
+          style: const TextStyle(
+            color: Color(0xFFB0B5D3),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1722,6 +1903,38 @@ class _CalendarDay extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ClassEditorResult {
+  final bool saved;
+  final DateTime date;
+
+  const _ClassEditorResult._({required this.saved, required this.date});
+
+  factory _ClassEditorResult.saved(DateTime date) {
+    return _ClassEditorResult._(saved: true, date: date);
+  }
+
+  factory _ClassEditorResult.cancelled() {
+    return _ClassEditorResult._(saved: false, date: DateTime(2000));
+  }
+}
+
+enum _DateDialogActionType { add, edit }
+
+class _DateDialogAction {
+  final _DateDialogActionType type;
+  final Map<String, dynamic>? data;
+
+  const _DateDialogAction._({required this.type, this.data});
+
+  factory _DateDialogAction.add() {
+    return const _DateDialogAction._(type: _DateDialogActionType.add);
+  }
+
+  factory _DateDialogAction.edit(Map<String, dynamic> data) {
+    return _DateDialogAction._(type: _DateDialogActionType.edit, data: data);
   }
 }
 
@@ -2189,11 +2402,15 @@ class _ClassDialogCard extends StatelessWidget {
                 onSelected: (value) async {
                   if (value == 'edit') {
                     onEdit();
-                  } else if (value == 'delete') {
-                    onDelete();
-                  } else {
-                    await onStatusChange(value);
+                    return;
                   }
+
+                  if (value == 'delete') {
+                    onDelete();
+                    return;
+                  }
+
+                  await onStatusChange(value);
                 },
                 itemBuilder: (context) {
                   return [
