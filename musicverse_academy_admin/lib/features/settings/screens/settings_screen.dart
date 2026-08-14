@@ -9,9 +9,11 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 // ============================================================================
 // MUSICVERSE ACADEMY ADMIN — SINGLE DART FILE
+// Requires: device_info_plus: ^12.4.0, firebase_auth, cloud_firestore, shared_preferences, go_router
 // ============================================================================
 
 /// The dashboard must call ensureSession() immediately after a successful
@@ -32,6 +34,7 @@ class AdminSessionManager with WidgetsBindingObserver {
   Future<void> Function()? _onRemoteLogout;
   bool _isSigningOut = false;
   bool _observerRegistered = false;
+  String? _cachedDeviceName;
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
@@ -89,6 +92,7 @@ class AdminSessionManager with WidgetsBindingObserver {
     String sessionId,
     User user,
     DocumentReference<Map<String, dynamic>> adminRef,
+    String deviceName,
   ) {
     final now = Timestamp.now();
 
@@ -96,7 +100,7 @@ class AdminSessionManager with WidgetsBindingObserver {
       'sessionId': sessionId,
       'uid': user.uid,
       'adminDocumentId': adminRef.id,
-      'deviceName': _deviceName(),
+      'deviceName': deviceName,
       'platform': _platformName(),
       'ipAddress': 'Unavailable',
       'createdAt': now,
@@ -127,6 +131,7 @@ class AdminSessionManager with WidgetsBindingObserver {
       final storedSessionId = prefs.getString(storageKey)?.trim();
 
       String? resolvedSessionId;
+      final deviceName = await _getDeviceName();
 
       // One transaction handles creation/refresh/cleanup atomically.
       await _firestore.runTransaction((transaction) async {
@@ -166,13 +171,13 @@ class AdminSessionManager with WidgetsBindingObserver {
             '${DateTime.now().microsecondsSinceEpoch}_${Random.secure().nextInt(999999)}';
 
         final currentSession = existing == null
-            ? _newSession(resolvedSessionId!, user, adminRef)
+            ? _newSession(resolvedSessionId!, user, adminRef, deviceName)
             : <String, dynamic>{
                 ...existing,
                 'sessionId': resolvedSessionId,
                 'uid': user.uid,
                 'adminDocumentId': adminRef.id,
-                'deviceName': _deviceName(),
+                'deviceName': deviceName,
                 'platform': _platformName(),
                 'isActive': true,
                 'revoked': false,
@@ -277,12 +282,13 @@ class AdminSessionManager with WidgetsBindingObserver {
         return false;
       }
 
+      final deviceName = await _getDeviceName();
       final refreshed = <String, dynamic>{
         ...existing,
         'isActive': true,
         'revoked': false,
         'lastActiveAt': Timestamp.now(),
-        'deviceName': _deviceName(),
+        'deviceName': deviceName,
         'platform': _platformName(),
       };
 
@@ -340,12 +346,16 @@ class AdminSessionManager with WidgetsBindingObserver {
         Map<String, dynamic>? current;
 
         for (final session in sessions) {
-          if (session['sessionId']?.toString() == currentSessionId) {
+          if (session['sessionId']?.toString() == currentSessionId &&
+              session['uid']?.toString() ==
+                  FirebaseAuth.instance.currentUser?.uid) {
             current = session;
             break;
           }
         }
 
+        // If another device removed this session from activeSessions,
+        // immediately sign out this device.
         if (current == null || !_isSessionFresh(current)) {
           _handleRemoteLogout();
         }
@@ -382,6 +392,7 @@ class AdminSessionManager with WidgetsBindingObserver {
     }
 
     try {
+      final deviceName = await _getDeviceName();
       await _firestore.runTransaction((transaction) async {
         final snapshot = await transaction.get(adminRef);
 
@@ -400,7 +411,7 @@ class AdminSessionManager with WidgetsBindingObserver {
               'isActive': true,
               'revoked': false,
               'lastActiveAt': Timestamp.now(),
-              'deviceName': _deviceName(),
+              'deviceName': deviceName,
               'platform': _platformName(),
             });
           } else {
@@ -486,10 +497,19 @@ class AdminSessionManager with WidgetsBindingObserver {
 
   Future<void> logoutSpecificSession(String sessionId) async {
     final adminRef = _adminRef;
+    final targetId = sessionId.trim();
 
-    if (adminRef == null || sessionId.trim().isEmpty) return;
+    if (adminRef == null || targetId.isEmpty) return;
 
-    await _removeSessionFromAdmin(adminRef, sessionId.trim());
+    // This method is for OTHER devices only. The current device must use
+    // logoutCurrentSession(), because that also signs out Firebase Auth.
+    if (targetId == currentSessionId) {
+      throw StateError(
+        'The current device must use Logout from Current Device.',
+      );
+    }
+
+    await _removeSessionFromAdmin(adminRef, targetId);
   }
 
   Future<void> _removeSessionFromAdmin(
@@ -601,23 +621,69 @@ class AdminSessionManager with WidgetsBindingObserver {
     }
   }
 
-  String _deviceName() {
-    if (kIsWeb) return 'Web Browser';
-
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        return 'Android Device';
-      case TargetPlatform.iOS:
-        return 'Apple Device';
-      case TargetPlatform.windows:
-        return 'Windows PC';
-      case TargetPlatform.macOS:
-        return 'Mac';
-      case TargetPlatform.linux:
-        return 'Linux PC';
-      case TargetPlatform.fuchsia:
-        return 'Fuchsia Device';
+  Future<String> _getDeviceName() async {
+    if (_cachedDeviceName != null && _cachedDeviceName!.trim().isNotEmpty) {
+      return _cachedDeviceName!;
     }
+
+    try {
+      if (kIsWeb) {
+        _cachedDeviceName = 'Web Browser';
+        return _cachedDeviceName!;
+      }
+
+      final info = DeviceInfoPlugin();
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final android = await info.androidInfo;
+        final manufacturer = android.manufacturer.trim();
+        final model = android.model.trim();
+
+        if (manufacturer.isNotEmpty && model.isNotEmpty) {
+          _cachedDeviceName = '${_capitalize(manufacturer)} $model';
+        } else if (manufacturer.isNotEmpty) {
+          _cachedDeviceName = _capitalize(manufacturer);
+        } else if (model.isNotEmpty) {
+          _cachedDeviceName = model;
+        } else {
+          _cachedDeviceName = 'Android Device';
+        }
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final ios = await info.iosInfo;
+        final name = ios.name.trim();
+        final model = ios.model.trim();
+        _cachedDeviceName = name.isNotEmpty
+            ? name
+            : (model.isNotEmpty ? model : 'iPhone');
+      } else if (defaultTargetPlatform == TargetPlatform.windows) {
+        final windows = await info.windowsInfo;
+        _cachedDeviceName = windows.computerName.trim().isNotEmpty
+            ? windows.computerName.trim()
+            : 'Windows PC';
+      } else if (defaultTargetPlatform == TargetPlatform.macOS) {
+        final mac = await info.macOsInfo;
+        _cachedDeviceName = mac.computerName.trim().isNotEmpty
+            ? mac.computerName.trim()
+            : 'Mac';
+      } else if (defaultTargetPlatform == TargetPlatform.linux) {
+        final linux = await info.linuxInfo;
+        _cachedDeviceName = linux.name.trim().isNotEmpty
+            ? linux.name.trim()
+            : 'Linux PC';
+      } else {
+        _cachedDeviceName = _platformName();
+      }
+    } catch (e) {
+      debugPrint('Unable to read device name: $e');
+      _cachedDeviceName = _platformName();
+    }
+
+    return _cachedDeviceName!;
+  }
+
+  String _capitalize(String value) {
+    if (value.isEmpty) return value;
+    return value[0].toUpperCase() + value.substring(1);
   }
 
   @override
