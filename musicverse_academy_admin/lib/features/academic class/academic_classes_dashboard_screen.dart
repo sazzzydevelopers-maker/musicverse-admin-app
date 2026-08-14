@@ -51,6 +51,19 @@ class _AcademicClassesDashboardScreenState
     return DateTime(date.year, date.month, date.day);
   }
 
+  bool _isPastDate(DateTime date) {
+    return _dateOnly(date).isBefore(_dateOnly(DateTime.now()));
+  }
+
+  bool _isCompleted(Map<String, dynamic> data) {
+    return (data['status']?.toString() ?? 'scheduled').toLowerCase() ==
+        'completed';
+  }
+
+  bool _isClassReadOnly(Map<String, dynamic> data) {
+    return _isPastDate(_toDate(data['date'])) || _isCompleted(data);
+  }
+
   DateTime _toDate(dynamic value) {
     if (value is Timestamp) {
       return value.toDate();
@@ -171,6 +184,7 @@ class _AcademicClassesDashboardScreenState
         return _DateClassesDialog(
           date: date,
           classes: classes,
+          canAddClass: !_isPastDate(date),
           monthlyClassCount: monthlyClasses.length,
           monthlyStudentCount: monthlyStudentCount,
           statusColor: _statusColor,
@@ -182,30 +196,24 @@ class _AcademicClassesDashboardScreenState
             Navigator.of(dialogContext).pop(_DateDialogAction.add());
           },
 
-          onEdit: (data) async {
+          onEdit: (data) {
             Navigator.of(dialogContext).pop(_DateDialogAction.edit(data));
           },
 
           // DELETE
-          onDelete: (data) async {
-            // Close the Classes popup immediately.
-            if (dialogContext.mounted) {
-              Navigator.of(dialogContext).pop();
-            }
-
-            // Delete from Firestore in the background.
-            _deleteClass(data);
+          // Return the requested action first. The outer dialog is allowed
+          // to finish closing before the confirmation dialog is opened.
+          onDelete: (data) {
+            Navigator.of(dialogContext).pop(_DateDialogAction.delete(data));
           },
 
           // STATUS: Scheduled / Completed / Cancelled
-          onStatusChange: (data, status) async {
-            // Close the Classes popup immediately.
-            if (dialogContext.mounted) {
-              Navigator.of(dialogContext).pop();
-            }
-
-            // Update Firestore in the background.
-            _updateStatus(data, status);
+          // Return the requested action first. Firestore is updated only
+          // after the Classes dialog has completely closed.
+          onStatusChange: (data, status) {
+            Navigator.of(
+              dialogContext,
+            ).pop(_DateDialogAction.status(data, status));
           },
         );
       },
@@ -220,6 +228,17 @@ class _AcademicClassesDashboardScreenState
     } else if (action.type == _DateDialogActionType.edit &&
         action.data != null) {
       await _showClassEditor(date: date, existingData: action.data);
+    } else if (action.type == _DateDialogActionType.delete &&
+        action.data != null) {
+      // The Classes dialog is already fully closed here, so opening the
+      // confirmation dialog cannot overlap two dialog routes.
+      await _deleteClass(action.data!);
+    } else if (action.type == _DateDialogActionType.status &&
+        action.data != null &&
+        action.status != null) {
+      // The Classes dialog is already fully closed here, so the Firestore
+      // update cannot race with its route being removed.
+      await _updateStatus(action.data!, action.status!);
     }
   }
 
@@ -229,11 +248,12 @@ class _AcademicClassesDashboardScreenState
   }) async {
     final isEditing = existingData != null;
 
-    final classIdController = TextEditingController(
-      text: isEditing
-          ? (existingData['classId']?.toString() ?? '')
-          : 'CLASS-${DateTime.now().year}-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
-    );
+    // Past classes and completed classes are historical records.
+    // They can still be viewed/deleted, but cannot be edited or used
+    // to create another class on a past date.
+    if (_isPastDate(date) || (isEditing && _isCompleted(existingData))) {
+      return;
+    }
 
     final teacherController = TextEditingController(
       text: isEditing ? (existingData['teacher']?.toString() ?? '') : '',
@@ -423,14 +443,6 @@ class _AcademicClassesDashboardScreenState
                       ),
 
                       const SizedBox(height: 24),
-
-                      _fieldLabel('Class ID'),
-                      const SizedBox(height: 8),
-                      _textField(
-                        controller: classIdController,
-                        hint: 'CLASS-2026-001',
-                        enabled: !isEditing,
-                      ),
 
                       const SizedBox(height: 16),
 
@@ -757,7 +769,7 @@ class _AcademicClassesDashboardScreenState
                                   child: _saveButton(
                                     dialogContext,
                                     isEditing,
-                                    classIdController,
+
                                     teacherController,
                                     studentCountController,
                                     selectedDate,
@@ -803,7 +815,7 @@ class _AcademicClassesDashboardScreenState
                                 child: _saveButton(
                                   dialogContext,
                                   isEditing,
-                                  classIdController,
+
                                   teacherController,
                                   studentCountController,
                                   selectedDate,
@@ -828,33 +840,83 @@ class _AcademicClassesDashboardScreenState
       },
     );
 
-    // The dialog is completely gone at this point. It is now safe to dispose
-    // its controllers and update the parent screen.
-    classIdController.dispose();
-    teacherController.dispose();
-    studentCountController.dispose();
+    // showDialog() can complete as soon as Navigator.pop() is requested,
+    // while Flutter is still deactivating the dialog's widget tree.
+    // Disposing TextEditingControllers in that same frame can cause:
+    //
+    //   framework.dart: '_dependents.isEmpty': is not true
+    //
+    // Dispose them on the next frame, after the dialog subtree has finished
+    // deactivation. This does not change the UI or Firestore behavior.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      teacherController.dispose();
+      studentCountController.dispose();
+    });
 
-    if (!mounted || result == null || !result.saved) {
+    if (!mounted || result == null || !result.saved || result.data == null) {
       return;
     }
 
     _selectedDate = result.date;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isEditing
-              ? 'Class updated successfully.'
-              : 'Class added successfully.',
+    try {
+      final data = Map<String, dynamic>.from(result.data!);
+
+      if (result.isEditing) {
+        final documentId = data.remove('_documentId')?.toString();
+
+        if (documentId == null || documentId.isEmpty) {
+          throw Exception('Document ID not found.');
+        }
+
+        await _classesCollection.doc(documentId).update({
+          ...data,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        data.remove('_documentId');
+
+        await _classesCollection.add({
+          ...data,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isEditing
+                ? 'Class updated successfully.'
+                : 'Class added successfully.',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isEditing
+                ? 'Failed to update class: $e'
+                : 'Failed to add class: $e',
+          ),
+        ),
+      );
+    }
   }
 
   Widget _saveButton(
     BuildContext dialogContext,
     bool isEditing,
-    TextEditingController classIdController,
+
     TextEditingController teacherController,
     TextEditingController studentCountController,
     DateTime selectedDate,
@@ -865,7 +927,7 @@ class _AcademicClassesDashboardScreenState
     Map<String, dynamic>? existingData,
   ) {
     return ElevatedButton(
-      onPressed: () async {
+      onPressed: () {
         final teacher = teacherController.text.trim();
         final students = int.tryParse(studentCountController.text.trim());
 
@@ -912,55 +974,44 @@ class _AcademicClassesDashboardScreenState
           endTime.minute,
         );
 
-        try {
-          if (isEditing && existingData != null) {
-            final documentId = existingData['_documentId']?.toString();
+        final classData = <String, dynamic>{
+          'course': selectedCourse,
+          'date': Timestamp.fromDate(date),
+          'startTime': Timestamp.fromDate(fixedStartTime),
+          'endTime': Timestamp.fromDate(fixedEndTime),
+          'status': selectedStatus,
+          'studentCount': students,
+          'teacher': teacher,
+        };
 
-            if (documentId == null || documentId.isEmpty) {
-              throw Exception('Document ID not found.');
+        if (isEditing && existingData != null) {
+          final documentId = existingData['_documentId']?.toString();
+
+          if (documentId == null || documentId.isEmpty) {
+            if (dialogContext.mounted) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(content: Text('Document ID not found.')),
+              );
             }
-
-            await _classesCollection.doc(documentId).update({
-              'classId': classIdController.text.trim(),
-              'course': selectedCourse,
-              'date': Timestamp.fromDate(date),
-              'startTime': Timestamp.fromDate(fixedStartTime),
-              'endTime': Timestamp.fromDate(fixedEndTime),
-              'status': selectedStatus,
-              'studentCount': students,
-              'teacher': teacher,
-              'updatedAt': FieldValue.serverTimestamp(),
-            });
-          } else {
-            await _classesCollection.add({
-              'classId': classIdController.text.trim(),
-              'course': selectedCourse,
-              'date': Timestamp.fromDate(date),
-              'startTime': Timestamp.fromDate(fixedStartTime),
-              'endTime': Timestamp.fromDate(fixedEndTime),
-              'status': selectedStatus,
-              'studentCount': students,
-              'teacher': teacher,
-              'createdAt': FieldValue.serverTimestamp(),
-              'updatedAt': FieldValue.serverTimestamp(),
-            });
+            return;
           }
 
-          // IMPORTANT:
-          // Return the result and let _showClassEditor() handle the
-          // snackbar AFTER showDialog() has completely closed.
-          if (dialogContext.mounted) {
-            Navigator.of(dialogContext).pop(_ClassEditorResult.saved(date));
-          }
-        } catch (e) {
-          // Only show an error while the dialog is still mounted.
-          // Never use this context after Navigator.pop().
-          if (dialogContext.mounted) {
-            ScaffoldMessenger.of(
-              dialogContext,
-            ).showSnackBar(SnackBar(content: Text('Failed to save class: $e')));
-          }
+          classData['_documentId'] = documentId;
         }
+
+        // Close the dialog first. Flutter will handle the dialog focus
+        // lifecycle. Do not manually unfocus and dispose the controllers in
+        // the same frame as Navigator.pop().
+        //
+        // Firestore is written only after showDialog() has completely
+        // showDialog() has completely finished.
+        Navigator.of(dialogContext).pop(
+          _ClassEditorResult.saved(
+            date: date,
+            data: classData,
+            isEditing: isEditing,
+          ),
+        );
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: _purple,
@@ -980,6 +1031,11 @@ class _AcademicClassesDashboardScreenState
     final documentId = data['_documentId']?.toString();
 
     if (documentId == null || documentId.isEmpty) {
+      return;
+    }
+
+    // Past/completed classes are read-only. Delete remains available.
+    if (_isClassReadOnly(data)) {
       return;
     }
 
@@ -1278,10 +1334,15 @@ class _AcademicClassesDashboardScreenState
   }
 
   Widget _addClassButton() {
+    final selectedDate = _selectedDate ?? DateTime.now();
+    final canAdd = !_isPastDate(selectedDate);
+
     return ElevatedButton.icon(
-      onPressed: () {
-        _showClassEditor(date: _selectedDate ?? DateTime.now());
-      },
+      onPressed: canAdd
+          ? () {
+              _showClassEditor(date: selectedDate);
+            }
+          : null,
       icon: const Icon(Icons.add_rounded),
       label: const Text('Add Class'),
       style: ElevatedButton.styleFrom(
@@ -1909,11 +1970,27 @@ class _CalendarDay extends StatelessWidget {
 class _ClassEditorResult {
   final bool saved;
   final DateTime date;
+  final Map<String, dynamic>? data;
+  final bool isEditing;
 
-  const _ClassEditorResult._({required this.saved, required this.date});
+  const _ClassEditorResult._({
+    required this.saved,
+    required this.date,
+    this.data,
+    this.isEditing = false,
+  });
 
-  factory _ClassEditorResult.saved(DateTime date) {
-    return _ClassEditorResult._(saved: true, date: date);
+  factory _ClassEditorResult.saved({
+    required DateTime date,
+    required Map<String, dynamic> data,
+    required bool isEditing,
+  }) {
+    return _ClassEditorResult._(
+      saved: true,
+      date: date,
+      data: data,
+      isEditing: isEditing,
+    );
   }
 
   factory _ClassEditorResult.cancelled() {
@@ -1921,13 +1998,14 @@ class _ClassEditorResult {
   }
 }
 
-enum _DateDialogActionType { add, edit }
+enum _DateDialogActionType { add, edit, delete, status }
 
 class _DateDialogAction {
   final _DateDialogActionType type;
   final Map<String, dynamic>? data;
+  final String? status;
 
-  const _DateDialogAction._({required this.type, this.data});
+  const _DateDialogAction._({required this.type, this.data, this.status});
 
   factory _DateDialogAction.add() {
     return const _DateDialogAction._(type: _DateDialogActionType.add);
@@ -1936,11 +2014,24 @@ class _DateDialogAction {
   factory _DateDialogAction.edit(Map<String, dynamic> data) {
     return _DateDialogAction._(type: _DateDialogActionType.edit, data: data);
   }
+
+  factory _DateDialogAction.delete(Map<String, dynamic> data) {
+    return _DateDialogAction._(type: _DateDialogActionType.delete, data: data);
+  }
+
+  factory _DateDialogAction.status(Map<String, dynamic> data, String status) {
+    return _DateDialogAction._(
+      type: _DateDialogActionType.status,
+      data: data,
+      status: status,
+    );
+  }
 }
 
 class _DateClassesDialog extends StatelessWidget {
   final DateTime date;
   final List<Map<String, dynamic>> classes;
+  final bool canAddClass;
   final int monthlyClassCount;
   final int monthlyStudentCount;
 
@@ -1950,13 +2041,14 @@ class _DateClassesDialog extends StatelessWidget {
   final String Function(DateTime) formatTime;
 
   final VoidCallback onAdd;
-  final Future<void> Function(Map<String, dynamic>) onEdit;
-  final Future<void> Function(Map<String, dynamic>) onDelete;
-  final Future<void> Function(Map<String, dynamic>, String) onStatusChange;
+  final void Function(Map<String, dynamic>) onEdit;
+  final void Function(Map<String, dynamic>) onDelete;
+  final void Function(Map<String, dynamic>, String) onStatusChange;
 
   const _DateClassesDialog({
     required this.date,
     required this.classes,
+    required this.canAddClass,
     required this.monthlyClassCount,
     required this.monthlyStudentCount,
     required this.statusColor,
@@ -2018,11 +2110,15 @@ class _DateClassesDialog extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    onPressed: onAdd,
-                    tooltip: 'Add class',
-                    icon: const Icon(
+                    onPressed: canAddClass ? onAdd : null,
+                    tooltip: canAddClass
+                        ? 'Add class'
+                        : 'Previous dates are read-only',
+                    icon: Icon(
                       Icons.add_circle_rounded,
-                      color: Color(0xFF9D6BFF),
+                      color: canAddClass
+                          ? const Color(0xFF9D6BFF)
+                          : const Color(0xFF555B78),
                       size: 30,
                     ),
                   ),
@@ -2088,7 +2184,7 @@ class _DateClassesDialog extends StatelessWidget {
                             formatTime: formatTime,
                             onEdit: () => onEdit(data),
                             onDelete: () => onDelete(data),
-                            onStatusChange: (status) =>
+                            onStatusChange: (status) async =>
                                 onStatusChange(data, status),
                           ),
                         ),
@@ -2188,9 +2284,9 @@ class _DateClassesDialog extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             ElevatedButton.icon(
-              onPressed: onAdd,
+              onPressed: canAddClass ? onAdd : null,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Add Class'),
+              label: Text(canAddClass ? 'Add Class' : 'Previous Date'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF7C4DFF),
                 foregroundColor: Colors.white,
@@ -2352,6 +2448,18 @@ class _ClassDialogCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = (data['status']?.toString() ?? 'scheduled').toLowerCase();
+    final classDate = _toDate(data['date']);
+    final today = DateTime.now();
+    final classDateOnly = DateTime(
+      classDate.year,
+      classDate.month,
+      classDate.day,
+    );
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final isPastDate = classDateOnly.isBefore(todayOnly);
+    final isCompleted = status == 'completed';
+    final isReadOnly = isPastDate || isCompleted;
+
     final color = statusColor(status);
     final start = _toDate(data['startTime']);
     final end = _toDate(data['endTime']);
@@ -2399,7 +2507,7 @@ class _ClassDialogCard extends StatelessWidget {
                   Icons.more_vert_rounded,
                   color: Color(0xFFB0B5D3),
                 ),
-                onSelected: (value) async {
+                onSelected: (value) {
                   if (value == 'edit') {
                     onEdit();
                     return;
@@ -2410,22 +2518,57 @@ class _ClassDialogCard extends StatelessWidget {
                     return;
                   }
 
-                  await onStatusChange(value);
+                  onStatusChange(value);
                 },
                 itemBuilder: (context) {
                   return [
-                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    const PopupMenuItem(
+                    PopupMenuItem(
+                      value: 'edit',
+                      enabled: !isReadOnly,
+                      child: Text(
+                        'Edit',
+                        style: TextStyle(
+                          color: isReadOnly
+                              ? const Color(0xFF555B78)
+                              : Colors.white,
+                        ),
+                      ),
+                    ),
+                    PopupMenuItem(
                       value: 'scheduled',
-                      child: Text('Mark Scheduled'),
+                      enabled: !isReadOnly,
+                      child: Text(
+                        'Mark Scheduled',
+                        style: TextStyle(
+                          color: isReadOnly
+                              ? const Color(0xFF555B78)
+                              : Colors.white,
+                        ),
+                      ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'completed',
-                      child: Text('Mark Completed'),
+                      enabled: !isReadOnly,
+                      child: Text(
+                        'Mark Completed',
+                        style: TextStyle(
+                          color: isReadOnly
+                              ? const Color(0xFF555B78)
+                              : Colors.white,
+                        ),
+                      ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'cancelled',
-                      child: Text('Mark Cancelled'),
+                      enabled: !isReadOnly,
+                      child: Text(
+                        'Mark Cancelled',
+                        style: TextStyle(
+                          color: isReadOnly
+                              ? const Color(0xFF555B78)
+                              : Colors.white,
+                        ),
+                      ),
                     ),
                     const PopupMenuDivider(),
                     const PopupMenuItem(
