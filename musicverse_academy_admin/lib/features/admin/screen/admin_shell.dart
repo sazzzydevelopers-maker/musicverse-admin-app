@@ -5,6 +5,7 @@ import '../../dashboard/screens/dashboard_screen.dart';
 import '../../students/screens/student_management_screen.dart';
 import '../../payments/screens/payment_dashboard_screen.dart';
 import '../../../utils/responsive.dart';
+import '../../settings/screens/settings_screen.dart';
 
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
@@ -189,7 +190,12 @@ class _AdminShellState extends State<AdminShell> {
 
         // Currently implemented sections.
         final bool isImplemented =
-            index == 0 || index == 1 || index == 4 || index == 5 || index == 6;
+            index == 0 ||
+            index == 1 ||
+            index == 4 ||
+            index == 5 ||
+            index == 6 ||
+            index == 12;
 
         final bool isSelected = _selectedIndex == index;
 
@@ -299,6 +305,9 @@ class _AdminShellState extends State<AdminShell> {
 
       case 6:
         return const AcademicClassesDashboardScreen();
+
+      case 12:
+        return const SettingsScreen();
 
       default:
         return const DashboardScreen();

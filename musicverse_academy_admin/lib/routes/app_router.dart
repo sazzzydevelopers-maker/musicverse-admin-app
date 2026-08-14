@@ -8,6 +8,7 @@ import 'package:musicverse_academy_admin/features/dashboard/screens/dashboard_sc
 import 'package:musicverse_academy_admin/features/auth/screens/login_screen.dart';
 import 'package:musicverse_academy_admin/features/auth/screens/login_animation_screen.dart';
 import 'package:musicverse_academy_admin/features/payments/screens/payment_dashboard_screen.dart';
+import 'package:musicverse_academy_admin/features/settings/screens/settings_screen.dart';
 import 'package:musicverse_academy_admin/features/students/screens/student_management_screen.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -84,6 +85,10 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '/payments',
           builder: (context, state) => const PaymentDashboardScreen(),
+        ),
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => const SettingsScreen(),
         ),
       ],
     ),
