@@ -1127,7 +1127,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     icon: Icons.devices,
                     title: 'Current Device',
                     value:
-                        '${AdminSessionManager.instance.currentSessionId ?? 'Creating session...'}',
+                        AdminSessionManager.instance.currentSessionId ??
+                        'Creating session...',
                     color: AppColors.secondary,
                   ),
                   const SizedBox(height: 14),
