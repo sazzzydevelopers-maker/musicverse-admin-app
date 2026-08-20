@@ -135,7 +135,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('user').snapshots(),
+        stream: FirebaseFirestore.instance.collection('users').snapshots(),
         builder: (context, userSnapshot) {
           if (userSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -1829,7 +1829,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
       final userDocId = item['docId']?.toString();
       if (userDocId != null && userDocId.isNotEmpty) {
         await FirebaseFirestore.instance
-            .collection('user')
+            .collection('users')
             .doc(userDocId)
             .update({
               'feeStatus': newStatus,
@@ -1878,7 +1878,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
 
     try {
       await FirebaseFirestore.instance
-          .collection('user')
+          .collection('users')
           .doc(item['docId'])
           .update({
             'monthlyFee': value,
@@ -2162,7 +2162,7 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
       }
 
       await FirebaseFirestore.instance
-          .collection('user')
+          .collection('users')
           .doc(item['docId'])
           .update({
             'feeStatus': 'Paid',

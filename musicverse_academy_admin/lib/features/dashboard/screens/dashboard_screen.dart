@@ -281,7 +281,7 @@ class DashboardScreen extends StatelessWidget {
     BoxConstraints constraints,
   ) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('user').snapshots(),
+      stream: FirebaseFirestore.instance.collection('users').snapshots(),
 
       builder: (context, userSnapshot) {
         if (userSnapshot.connectionState == ConnectionState.waiting) {
@@ -537,7 +537,7 @@ class DashboardScreen extends StatelessWidget {
         const SizedBox(height: 12),
 
         StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('user').snapshots(),
+          stream: FirebaseFirestore.instance.collection('users').snapshots(),
 
           builder: (context, userSnapshot) {
             if (userSnapshot.connectionState == ConnectionState.waiting) {
@@ -721,7 +721,7 @@ class DashboardScreen extends StatelessWidget {
 
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
-              .collection('user')
+              .collection('users')
               .orderBy('createdAt', descending: true)
               .limit(5)
               .snapshots(),

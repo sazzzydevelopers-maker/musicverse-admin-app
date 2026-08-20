@@ -41,48 +41,46 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDDLOEIdc5kFcCSs3GsISvPF0eHvWHiztw',
-    appId: '1:269204650355:web:128985aeda3918bb13ad06',
-    messagingSenderId: '269204650355',
-    projectId: 'adminmusicverse',
-    authDomain: 'adminmusicverse.firebaseapp.com',
-    storageBucket: 'adminmusicverse.firebasestorage.app',
-    measurementId: 'G-V6HG4GEH84',
+    apiKey: 'AIzaSyBTeBo4GLEIf4Za3FSvEfn8B3YwHreE4SU',
+    appId: '1:31514911754:web:45ea1ea096f2d1223d6bf3',
+    messagingSenderId: '31514911754',
+    projectId: 'musicverse-academy',
+    authDomain: 'musicverse-academy.firebaseapp.com',
+    storageBucket: 'musicverse-academy.firebasestorage.app',
+    measurementId: 'G-F7F9BM261L',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCRwFFsFn1VuWHNlO0WWOXufVVU6OYLFso',
-    appId: '1:269204650355:android:2c5ef26d9bae7c1513ad06',
-    messagingSenderId: '269204650355',
-    projectId: 'adminmusicverse',
-    storageBucket: 'adminmusicverse.firebasestorage.app',
+    apiKey: 'AIzaSyDOK6X_MatEXkWwrgDzAHl9carlWqjbbbc',
+    appId: '1:31514911754:android:61538c75b51589d03d6bf3',
+    messagingSenderId: '31514911754',
+    projectId: 'musicverse-academy',
+    storageBucket: 'musicverse-academy.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDyTb3IysunYsRWWYr74OzFxPP5ATzP7R8',
-    appId: '1:269204650355:ios:1772287643f889f813ad06',
-    messagingSenderId: '269204650355',
-    projectId: 'adminmusicverse',
-    storageBucket: 'adminmusicverse.firebasestorage.app',
+    apiKey: 'AIzaSyApdNQslFzEWBkU30bgeidOwyRSeMrF-m0',
+    appId: '1:31514911754:ios:35212e58497ef4d13d6bf3',
+    messagingSenderId: '31514911754',
+    projectId: 'musicverse-academy',
+    storageBucket: 'musicverse-academy.firebasestorage.app',
     iosBundleId: 'com.musicverse.musicverseAcademyAdmin',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyDyTb3IysunYsRWWYr74OzFxPP5ATzP7R8',
-    appId: '1:269204650355:ios:1772287643f889f813ad06',
-    messagingSenderId: '269204650355',
-    projectId: 'adminmusicverse',
-    storageBucket: 'adminmusicverse.firebasestorage.app',
+    apiKey: 'AIzaSyApdNQslFzEWBkU30bgeidOwyRSeMrF-m0',
+    appId: '1:31514911754:ios:35212e58497ef4d13d6bf3',
+    messagingSenderId: '31514911754',
+    projectId: 'musicverse-academy',
+    storageBucket: 'musicverse-academy.firebasestorage.app',
     iosBundleId: 'com.musicverse.musicverseAcademyAdmin',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDDLOEIdc5kFcCSs3GsISvPF0eHvWHiztw',
-    appId: '1:269204650355:web:5d7d0b89b362009113ad06',
-    messagingSenderId: '269204650355',
-    projectId: 'adminmusicverse',
-    authDomain: 'adminmusicverse.firebaseapp.com',
-    storageBucket: 'adminmusicverse.firebasestorage.app',
-    measurementId: 'G-6FVZ4PFX7V',
+    apiKey: 'AIzaSyBTeBo4GLEIf4Za3FSvEfn8B3YwHreE4SU',
+    appId: '1:31514911754:web:dec93a72dddff7123d6bf3',
+    messagingSenderId: '31514911754',
+    projectId: 'musicverse-academy',
+    authDomain: 'musicverse-academy.firebaseapp.com',
+    storageBucket: 'musicverse-academy.firebasestorage.app',
+    measurementId: 'G-H4LHMXNW9L',
   );
 }

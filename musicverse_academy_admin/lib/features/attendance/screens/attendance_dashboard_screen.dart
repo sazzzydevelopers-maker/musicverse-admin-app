@@ -141,7 +141,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
       // FIRST: READ ALL STUDENTS FROM USER COLLECTION
       // ============================================================
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('user').snapshots(),
+        stream: FirebaseFirestore.instance.collection('users').snapshots(),
 
         builder: (context, userSnapshot) {
           if (userSnapshot.connectionState == ConnectionState.waiting) {

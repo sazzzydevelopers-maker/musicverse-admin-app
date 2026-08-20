@@ -112,7 +112,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       ),
 
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('user').snapshots(),
+        stream: FirebaseFirestore.instance.collection('users').snapshots(),
 
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -185,11 +185,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               final filteredDocs = docs.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
 
-                final firstName = (data['firstName'] ?? '')
+                final firstName = (data['first_name'] ?? '')
                     .toString()
                     .toLowerCase();
 
-                final lastName = (data['lastName'] ?? '')
+                final lastName = (data['last_name'] ?? '')
                     .toString()
                     .toLowerCase();
 
@@ -199,7 +199,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                 final email = (data['email'] ?? '').toString().toLowerCase();
 
-                final phone = (data['phone'] ?? '').toString().toLowerCase();
+                final phone = (data['phone_number'] ?? '')
+                    .toString()
+                    .toLowerCase();
 
                 final fullName = '$firstName $lastName';
 
@@ -479,30 +481,34 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                     final String docId = doc.id;
 
                                     final String firstName =
-                                        data['firstName']?.toString() ?? '';
+                                        data['first_name']?.toString() ?? '';
 
                                     final String lastName =
-                                        data['lastName']?.toString() ?? '';
+                                        data['last_name']?.toString() ?? '';
 
                                     final String studentId =
                                         data['studentId']?.toString() ?? 'N/A';
 
                                     final String course =
-                                        data['course']?.toString() ?? 'General';
+                                        data['preferred_instrument']
+                                            ?.toString() ??
+                                        'General';
 
                                     final String phone =
-                                        data['phone']?.toString() ?? 'N/A';
+                                        data['phone_number']?.toString() ??
+                                        'N/A';
 
                                     final String feeStatus =
                                         data['feeStatus']?.toString() ??
                                         'Pending';
 
                                     final String accountStatus =
-                                        data['accountStatus']?.toString() ??
-                                        'Inactive';
+                                        data['is_active'] == true
+                                        ? 'Active'
+                                        : 'Inactive';
 
                                     final String profilePhoto =
-                                        data['profilePhoto']?.toString() ?? '';
+                                        data['profile_photo']?.toString() ?? '';
 
                                     return _buildStudentManagementCard(
                                       context: context,
@@ -1018,11 +1024,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     // ==========================================================
 
     final firstNameController = TextEditingController(
-      text: existingData?['firstName']?.toString() ?? '',
+      text: existingData?['first_name']?.toString() ?? '',
     );
 
     final lastNameController = TextEditingController(
-      text: existingData?['lastName']?.toString() ?? '',
+      text: existingData?['last_name']?.toString() ?? '',
     );
 
     final emailController = TextEditingController(
@@ -1030,7 +1036,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
 
     final phoneController = TextEditingController(
-      text: existingData?['phone']?.toString() ?? '',
+      text: existingData?['phone_number']?.toString() ?? '',
     );
 
     final monthlyFeeController = TextEditingController(
@@ -1057,8 +1063,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
     Uint8List? selectedImageBytes;
 
-    String? existingImageUrl = existingData?['profilePhoto']?.toString();
-
+    String? existingImageUrl = existingData?['profile_photo']?.toString();
     // Selected course for the required course dropdown.
     //
     // IMPORTANT:
@@ -1082,8 +1087,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       'Vocals',
     ];
 
-    final String? existingCourse = existingData?['course']?.toString().trim();
-
+    final String? existingCourse = existingData?['preferred_instrument']
+        ?.toString()
+        .trim();
     String? selectedCourse =
         existingCourse != null && courseOptions.contains(existingCourse)
         ? existingCourse
@@ -1343,22 +1349,14 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                 // -----------------------------we-----------------
 
                 final Map<String, dynamic> studentData = {
-                  'firstName': firstNameController.text.trim(),
-
-                  'lastName': lastNameController.text.trim(),
-
+                  'first_name': firstNameController.text.trim(),
+                  'last_name': lastNameController.text.trim(),
                   'email': emailController.text.trim(),
-
-                  'phone': phoneController.text.trim(),
-
-                  'course': selectedCourse!,
-
+                  'phone_number': phoneController.text.trim(),
+                  'preferred_instrument': selectedCourse!,
                   'gender': selectedGender!,
-
                   'grade': selectedGrade!,
-
                   'monthlyFee': double.parse(monthlyFeeController.text.trim()),
-
                   'updatedAt': FieldValue.serverTimestamp(),
                 };
 
@@ -1378,7 +1376,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   // the dialog should close. The optional photo is
                   // uploaded in the background afterwards.
                   await FirebaseFirestore.instance
-                      .collection('user')
+                      .collection('users')
                       .doc(editingDocId)
                       .update(studentData);
 
@@ -1392,7 +1390,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     ) async {
                       if (imageUrl != null && imageUrl.isNotEmpty) {
                         await FirebaseFirestore.instance
-                            .collection('user')
+                            .collection('users')
                             .doc(editingDocId)
                             .update({
                               'profilePhoto': imageUrl,
@@ -1412,7 +1410,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   String newStudentId = studentIdController.text.trim();
 
                   final CollectionReference<Map<String, dynamic>> users =
-                      FirebaseFirestore.instance.collection('user');
+                      FirebaseFirestore.instance.collection('users');
 
                   for (int attempt = 0; attempt < 20; attempt++) {
                     final QuerySnapshot<Map<String, dynamic>> existingId =
@@ -1468,7 +1466,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
                   final DocumentReference newStudentRef =
                       await FirebaseFirestore.instance
-                          .collection('user')
+                          .collection('users')
                           .add(studentData);
 
                   // --------------------------------------------
@@ -2449,7 +2447,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
               onPressed: () async {
                 await FirebaseFirestore.instance
-                    .collection('user')
+                    .collection('users')
                     .doc(docId)
                     .update({
                       'accountStatus': newStatus,
@@ -2643,7 +2641,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       // ==========================================================
       // 3. DELETE THE STUDENT FROM USER COLLECTION
       // ==========================================================
-      await firestore.collection('user').doc(docId).delete();
+      await firestore.collection('users').doc(docId).delete();
 
       // ==========================================================
       // 4. CLOSE PROGRESS DIALOG
