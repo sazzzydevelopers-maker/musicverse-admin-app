@@ -558,6 +558,17 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     final bool isPaid = feeStatus == 'Paid';
     final bool isActive = accountStatus == 'Active';
 
+    // Gender and Grade are read directly from the same Firestore
+    // student document. Existing students that do not yet have these
+    // fields will safely display "Not Set".
+    final String gender = data['gender']?.toString().trim().isNotEmpty == true
+        ? data['gender'].toString().trim()
+        : 'Not Set';
+
+    final String grade = data['grade']?.toString().trim().isNotEmpty == true
+        ? data['grade'].toString().trim()
+        : 'Not Set';
+
     final Widget menu = PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert, color: textSecondary),
       color: cardColor,
@@ -641,6 +652,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       children: [
         _buildStudentInfoPill(Icons.music_note_rounded, course),
         _buildStudentInfoPill(Icons.phone_rounded, phone),
+        _buildStudentInfoPill(Icons.person_outline_rounded, gender),
+        _buildStudentInfoPill(Icons.school_outlined, grade),
       ],
     );
 
@@ -715,6 +728,18 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   ),
                   const SizedBox(height: 9),
                   _buildStudentDetailLine('Phone', phone, Icons.phone_rounded),
+                  const SizedBox(height: 9),
+                  _buildStudentDetailLine(
+                    'Gender',
+                    gender,
+                    Icons.person_outline_rounded,
+                  ),
+                  const SizedBox(height: 9),
+                  _buildStudentDetailLine(
+                    'Grade',
+                    grade,
+                    Icons.school_outlined,
+                  ),
                 ],
               ),
             ),
@@ -1914,7 +1939,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                           ),
                           decoration: InputDecoration(
                             labelText: 'Gender',
-                            hintText: 'Select Gender',
+                            hintText:
+                                existingGender != null &&
+                                    existingGender.isNotEmpty
+                                ? existingGender
+                                : 'Select Gender',
                             labelStyle: const TextStyle(color: textSecondary),
                             hintStyle: const TextStyle(color: textSecondary),
                             filled: true,
@@ -1980,7 +2009,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                           ),
                           decoration: InputDecoration(
                             labelText: 'Grade',
-                            hintText: 'Select Grade',
+                            hintText:
+                                existingGrade != null &&
+                                    existingGrade.isNotEmpty
+                                ? existingGrade
+                                : 'Select Grade',
                             labelStyle: const TextStyle(color: textSecondary),
                             hintStyle: const TextStyle(color: textSecondary),
                             filled: true,
