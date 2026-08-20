@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+// ignore: unnecessary_import
 import 'dart:typed_data';
 import 'dart:math';
+import 'package:flutter/services.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -141,7 +145,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           final int activeStudents = docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
 
-            return data['accountStatus'] == 'Active';
+            return data['is_active'] == true ||
+                data['accountStatus'] == 'Active';
           }).length;
 
           final int inactiveStudents = totalStudents - activeStudents;
@@ -490,9 +495,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                         data['studentId']?.toString() ?? 'N/A';
 
                                     final String course =
-                                        data['preferred_instrument']
-                                            ?.toString() ??
-                                        'General';
+                                        (data['preferred_instrument'] ??
+                                                data['course'] ??
+                                                'General')
+                                            .toString();
 
                                     final String phone =
                                         data['phone_number']?.toString() ??
@@ -503,12 +509,16 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                         'Pending';
 
                                     final String accountStatus =
-                                        data['is_active'] == true
+                                        data['is_active'] == true ||
+                                            data['accountStatus'] == 'Active'
                                         ? 'Active'
                                         : 'Inactive';
 
                                     final String profilePhoto =
-                                        data['profile_photo']?.toString() ?? '';
+                                        (data['profile_photo'] ??
+                                                data['profilePhoto'] ??
+                                                '')
+                                            .toString();
 
                                     return _buildStudentManagementCard(
                                       context: context,
@@ -1063,7 +1073,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
     Uint8List? selectedImageBytes;
 
-    String? existingImageUrl = existingData?['profile_photo']?.toString();
+    String? existingImageUrl =
+        (existingData?['profile_photo'] ?? existingData?['profilePhoto'])
+            ?.toString();
     // Selected course for the required course dropdown.
     //
     // IMPORTANT:
@@ -1331,10 +1343,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             // ==================================================
 
             Future<void> saveStudent() async {
-              // ----------------------------------------------
-              // VALIDATE ALL REQUIRED FIELDS
-              // ----------------------------------------------
-
               if (!formKey.currentState!.validate()) {
                 return;
               }
@@ -1344,14 +1352,15 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               });
 
               try {
-                // ----------------------------------------------
-                // COMMON STUDENT DATA
-                // -----------------------------we-----------------
+                final String firstName = firstNameController.text.trim();
+                final String lastName = lastNameController.text.trim();
+                final String email = emailController.text.trim();
 
                 final Map<String, dynamic> studentData = {
-                  'first_name': firstNameController.text.trim(),
-                  'last_name': lastNameController.text.trim(),
-                  'email': emailController.text.trim(),
+                  'first_name': firstName,
+                  'last_name': lastName,
+                  'full_name': '$firstName $lastName'.trim(),
+                  'email': email,
                   'phone_number': phoneController.text.trim(),
                   'preferred_instrument': selectedCourse!,
                   'gender': selectedGender!,
@@ -1360,21 +1369,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   'updatedAt': FieldValue.serverTimestamp(),
                 };
 
-                // ============================================
-                // EDIT STUDENT
-                // ============================================
+                // ==================================================
+                // EDIT EXISTING STUDENT
+                // ==================================================
 
                 if (isEditing) {
                   final String editingDocId = docId;
 
-                  // --------------------------------------------
-                  // UPDATE FIRESTORE FIRST
-                  // --------------------------------------------
-                  //
-                  // Do NOT wait for Firebase Storage here.
-                  // Firestore data should be saved immediately and
-                  // the dialog should close. The optional photo is
-                  // uploaded in the background afterwards.
                   await FirebaseFirestore.instance
                       .collection('users')
                       .doc(editingDocId)
@@ -1383,8 +1384,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   final Uint8List? imageBytesToUpload = selectedImageBytes;
 
                   if (imageBytesToUpload != null) {
-                    // Start the optional photo upload without blocking
-                    // the Save button.
                     uploadStudentImage(editingDocId, imageBytesToUpload).then((
                       imageUrl,
                     ) async {
@@ -1393,136 +1392,143 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                             .collection('users')
                             .doc(editingDocId)
                             .update({
-                              'profilePhoto': imageUrl,
+                              'profile_photo': imageUrl,
                               'updatedAt': FieldValue.serverTimestamp(),
                             });
                       }
                     });
                   }
-                }
-                // ============================================
-                // ADD NEW STUDENT
-                // ============================================
-                else {
-                  // The ID displayed in the Add Student form is the ID we
-                  // save. If a very rare collision exists in Firestore,
-                  // generate a new ID before saving.
-                  String newStudentId = studentIdController.text.trim();
 
-                  final CollectionReference<Map<String, dynamic>> users =
-                      FirebaseFirestore.instance.collection('users');
-
-                  for (int attempt = 0; attempt < 20; attempt++) {
-                    final QuerySnapshot<Map<String, dynamic>> existingId =
-                        await users
-                            .where('studentId', isEqualTo: newStudentId)
-                            .limit(1)
-                            .get();
-
-                    if (existingId.docs.isEmpty) {
-                      break;
-                    }
-
-                    newStudentId = _generateStudentId();
+                  if (!dialogContext.mounted) {
+                    return;
                   }
 
-                  final QuerySnapshot<Map<String, dynamic>> finalCheck =
+                  Navigator.of(dialogContext).pop();
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Student updated successfully.'),
+                    ),
+                  );
+
+                  return;
+                }
+
+                // ==================================================
+                // ADD NEW STUDENT
+                // ==================================================
+
+                String newStudentId = studentIdController.text.trim();
+
+                final CollectionReference<Map<String, dynamic>> users =
+                    FirebaseFirestore.instance.collection('users');
+
+                for (int attempt = 0; attempt < 20; attempt++) {
+                  final QuerySnapshot<Map<String, dynamic>> existingId =
                       await users
                           .where('studentId', isEqualTo: newStudentId)
                           .limit(1)
                           .get();
 
-                  if (finalCheck.docs.isNotEmpty) {
-                    throw Exception(
-                      'Unable to generate a unique Student ID. Please try again.',
-                    );
+                  if (existingId.docs.isEmpty) {
+                    break;
                   }
 
-                  studentData['studentId'] = newStudentId;
-
-                  studentData['createdAt'] = FieldValue.serverTimestamp();
-
-                  studentData['accountStatus'] = 'Active';
-
-                  studentData['feeStatus'] = 'Pending';
-
-                  studentData['presentDays'] = 0;
-
-                  studentData['absentDays'] = 0;
-
-                  studentData['todayAttendance'] = 'Pending';
-
-                  studentData['practiceProgress'] = 0;
-
-                  // --------------------------------------------
-                  // PHOTO IS OPTIONAL
-                  // --------------------------------------------
-
-                  studentData['profilePhoto'] = '';
-
-                  // --------------------------------------------
-                  // CREATE FIRESTORE DOCUMENT
-                  // --------------------------------------------
-
-                  final DocumentReference newStudentRef =
-                      await FirebaseFirestore.instance
-                          .collection('users')
-                          .add(studentData);
-
-                  // --------------------------------------------
-                  // OPTIONAL PHOTO UPLOAD
-                  // --------------------------------------------
-                  //
-                  // IMPORTANT:
-                  // Do NOT await Firebase Storage here.
-                  //
-                  // Firestore has already created the student.
-                  // The Save button must finish immediately instead
-                  // of staying on a loading spinner while Storage
-                  // uploads the optional image.
-                  final Uint8List? imageBytesToUpload = selectedImageBytes;
-
-                  if (imageBytesToUpload != null) {
-                    uploadStudentImage(
-                      newStudentRef.id,
-                      imageBytesToUpload,
-                    ).then((imageUrl) async {
-                      if (imageUrl != null && imageUrl.isNotEmpty) {
-                        await newStudentRef.update({
-                          'profilePhoto': imageUrl,
-                          'updatedAt': FieldValue.serverTimestamp(),
-                        });
-                      }
-                    });
-                  }
+                  newStudentId = _generateStudentId();
                 }
 
-                // ============================================
-                // SUCCESS
-                // ============================================
+                final QuerySnapshot<Map<String, dynamic>> finalCheck =
+                    await users
+                        .where('studentId', isEqualTo: newStudentId)
+                        .limit(1)
+                        .get();
+
+                if (finalCheck.docs.isNotEmpty) {
+                  throw Exception('Unable to generate a unique Student ID.');
+                }
+
+                // ==================================================
+                // CREATE FIREBASE AUTH ACCOUNT
+                // ==================================================
+                //
+                // A secondary Firebase app is used so the Admin
+                // account remains logged in.
+                //
+                final Map<String, String> authResult =
+                    await _createStudentAuthAccount(email: email);
+
+                final String studentUid = authResult['uid']!;
+                final String temporaryPassword =
+                    authResult['temporaryPassword']!;
+
+                // ==================================================
+                // CREATE USERS/{AUTH_UID}
+                // ==================================================
+                //
+                // Firestore document ID is the same Firebase Auth UID.
+                //
+                final DocumentReference<Map<String, dynamic>> newStudentRef =
+                    users.doc(studentUid);
+
+                studentData.addAll({
+                  'uid': studentUid,
+                  'studentId': newStudentId,
+                  'role': 'student',
+                  'email_verified': false,
+                  'is_active': true,
+                  'accountStatus': 'Active',
+                  'feeStatus': 'Pending',
+                  'must_change_password': true,
+                  'profile_completed': false,
+                  'presentDays': 0,
+                  'absentDays': 0,
+                  'todayAttendance': 'Pending',
+                  'practiceProgress': 0,
+                  'profile_photo': '',
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+
+                await newStudentRef.set(studentData);
+
+                // ==================================================
+                // OPTIONAL PHOTO
+                // ==================================================
+
+                final Uint8List? imageBytesToUpload = selectedImageBytes;
+
+                if (imageBytesToUpload != null) {
+                  uploadStudentImage(studentUid, imageBytesToUpload).then((
+                    imageUrl,
+                  ) async {
+                    if (imageUrl != null && imageUrl.isNotEmpty) {
+                      await newStudentRef.update({
+                        'profile_photo': imageUrl,
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      });
+                    }
+                  });
+                }
+
+                // ==================================================
+                // CLOSE ADD DIALOG
+                // ==================================================
 
                 if (!dialogContext.mounted) {
                   return;
                 }
 
-                // IMPORTANT:
-                //
-                // This closes ONLY the
-                // Add/Edit dialog.
-                //
-                // It does NOT go to
-                // Dashboard.
-                //
                 Navigator.of(dialogContext).pop();
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isEditing
-                          ? 'Student updated successfully.'
-                          : 'Student added successfully.',
-                    ),
-                  ),
+                // ==================================================
+                // SHOW TEMPORARY PASSWORD
+                // ==================================================
+
+                await _showTemporaryPasswordDialog(
+                  context,
+                  studentName: '$firstName $lastName'.trim(),
+                  email: email,
+                  studentId: newStudentId,
+                  temporaryPassword: temporaryPassword,
                 );
               } catch (e) {
                 if (!dialogContext.mounted) {
@@ -2230,6 +2236,303 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   // ============================================================
+  // CREATE STUDENT FIREBASE AUTH ACCOUNT
+  // ============================================================
+  //
+  // Uses a SECONDARY Firebase App so creating a student account
+  // does NOT sign the Admin out.
+  //
+  // The Auth account and Firestore users/{uid} document are linked
+  // using the same Firebase Authentication UID.
+  // ============================================================
+
+  Future<Map<String, String>> _createStudentAuthAccount({
+    required String email,
+  }) async {
+    final String cleanEmail = email.trim();
+
+    if (cleanEmail.isEmpty) {
+      throw Exception('Student email is required.');
+    }
+
+    final String temporaryPassword = _generateTemporaryPassword();
+
+    FirebaseApp? secondaryApp;
+    FirebaseAuth? secondaryAuth;
+
+    try {
+      final FirebaseApp primaryApp = Firebase.app();
+
+      secondaryApp = await Firebase.initializeApp(
+        name: 'studentCreator_${DateTime.now().microsecondsSinceEpoch}',
+        options: primaryApp.options,
+      );
+
+      secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+
+      final UserCredential credential = await secondaryAuth
+          .createUserWithEmailAndPassword(
+            email: cleanEmail,
+            password: temporaryPassword,
+          );
+
+      final User? studentUser = credential.user;
+
+      if (studentUser == null) {
+        throw Exception('Firebase did not return the student account.');
+      }
+
+      // Send Firebase's normal verification email.
+      await studentUser.sendEmailVerification();
+
+      return {'uid': studentUser.uid, 'temporaryPassword': temporaryPassword};
+    } on FirebaseAuthException catch (e) {
+      switch (e.code) {
+        case 'email-already-in-use':
+          throw Exception('An account already exists with this email.');
+
+        case 'invalid-email':
+          throw Exception('The student email address is invalid.');
+
+        case 'weak-password':
+          throw Exception('The generated temporary password was rejected.');
+
+        case 'operation-not-allowed':
+          throw Exception(
+            'Email/Password Authentication is not enabled in Firebase.',
+          );
+
+        case 'network-request-failed':
+          throw Exception('Network error. Check your internet connection.');
+
+        case 'too-many-requests':
+          throw Exception('Too many requests. Please wait and try again.');
+
+        default:
+          throw Exception(e.message ?? 'Unable to create the student account.');
+      }
+    } finally {
+      try {
+        await secondaryAuth?.signOut();
+      } catch (_) {}
+
+      try {
+        await secondaryApp?.delete();
+      } catch (_) {}
+    }
+  }
+
+  // ============================================================
+  // GENERATE TEMPORARY PASSWORD
+  // ============================================================
+
+  String _generateTemporaryPassword() {
+    const String characters =
+        'ABCDEFGHJKLMNPQRSTUVWXYZ'
+        'abcdefghijkmnopqrstuvwxyz'
+        '23456789';
+
+    final Random random = Random.secure();
+
+    return List.generate(
+      12,
+      (_) => characters[random.nextInt(characters.length)],
+    ).join();
+  }
+
+  // ============================================================
+  // SHOW TEMPORARY PASSWORD
+  // ============================================================
+
+  Future<void> _showTemporaryPasswordDialog(
+    BuildContext context, {
+    required String studentName,
+    required String email,
+    required String studentId,
+    required String temporaryPassword,
+  }) async {
+    bool copied = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              backgroundColor: cardColor,
+
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle, color: successColor, size: 28),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Student Created',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        studentName.isEmpty ? 'Student' : studentName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text(email, style: const TextStyle(color: textSecondary)),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'Student ID: $studentId',
+                        style: const TextStyle(
+                          color: textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      const Text(
+                        'Temporary Password',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: primaryColor.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: SelectableText(
+                                temporaryPassword,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ),
+
+                            IconButton(
+                              tooltip: 'Copy password',
+                              icon: Icon(
+                                copied ? Icons.check : Icons.content_copy,
+                                color: copied ? successColor : primaryColor,
+                              ),
+                              onPressed: () async {
+                                await Clipboard.setData(
+                                  ClipboardData(text: temporaryPassword),
+                                );
+
+                                setDialogState(() {
+                                  copied = true;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: warningColor.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: warningColor.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: warningColor,
+                              size: 20,
+                            ),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Give this temporary password to the student. '
+                                'The student must change it during the first login.',
+                                style: TextStyle(
+                                  color: textSecondary,
+                                  fontSize: 12.5,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      const Text(
+                        'A verification email has been sent to the student.',
+                        style: TextStyle(color: textSecondary, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Done'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ============================================================
   // GENERATE STUDENT ID
   // ============================================================
   String _generateStudentId() {
@@ -2249,51 +2552,50 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     BuildContext context,
     Map<String, dynamic> data,
   ) {
-    final String profilePhoto = data['profilePhoto']?.toString() ?? '';
+    final String firstName = (data['first_name'] ?? data['firstName'] ?? '')
+        .toString()
+        .trim();
+
+    final String lastName = (data['last_name'] ?? data['lastName'] ?? '')
+        .toString()
+        .trim();
+
+    final String profilePhoto =
+        (data['profile_photo'] ?? data['profilePhoto'] ?? '').toString();
+
+    final String fullName =
+        (data['full_name'] ?? data['fullName'] ?? '$firstName $lastName')
+            .toString()
+            .trim();
 
     showDialog(
       context: context,
-
       builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: cardColor,
-
           title: Text(
-            '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}',
-
+            fullName.isEmpty ? 'Student Details' : fullName,
             style: const TextStyle(
               color: Colors.white,
-
               fontWeight: FontWeight.bold,
             ),
           ),
-
           content: SizedBox(
-            width: 400,
-
+            width: 420,
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  // ============================================
-                  // PHOTO
-                  // ============================================
                   if (profilePhoto.isNotEmpty)
                     ClipOval(
                       child: Image.network(
                         profilePhoto,
-
                         width: 100,
-
                         height: 100,
-
                         fit: BoxFit.cover,
-
                         errorBuilder: (context, error, stackTrace) {
                           return const CircleAvatar(
                             radius: 50,
-
                             backgroundColor: primaryColor,
-
                             child: Icon(
                               Icons.person,
                               color: Colors.white,
@@ -2306,49 +2608,75 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   else
                     const CircleAvatar(
                       radius: 50,
-
                       backgroundColor: primaryColor,
-
                       child: Icon(Icons.person, color: Colors.white, size: 45),
                     ),
 
                   const SizedBox(height: 20),
 
-                  _detailRow('Student ID', data['studentId']?.toString()),
+                  _detailRow('UID', data['uid']?.toString() ?? 'N/A'),
 
-                  _detailRow('Email', data['email']?.toString()),
+                  _detailRow(
+                    'Student ID',
+                    data['studentId']?.toString() ?? 'N/A',
+                  ),
 
-                  _detailRow('Phone', data['phone']?.toString()),
+                  _detailRow('Email', data['email']?.toString() ?? 'N/A'),
 
-                  _detailRow('Course', data['course']?.toString()),
+                  _detailRow(
+                    'Phone',
+                    data['phone_number']?.toString() ??
+                        data['phone']?.toString() ??
+                        'N/A',
+                  ),
 
-                  _detailRow('Gender', data['gender']?.toString()),
+                  _detailRow(
+                    'Course',
+                    data['preferred_instrument']?.toString() ??
+                        data['course']?.toString() ??
+                        'N/A',
+                  ),
 
-                  _detailRow('Grade', data['grade']?.toString()),
+                  _detailRow('Gender', data['gender']?.toString() ?? 'N/A'),
 
-                  _detailRow('Date of Birth', data['dateOfBirth']?.toString()),
+                  _detailRow('Grade', data['grade']?.toString() ?? 'N/A'),
 
-                  _detailRow('Address', data['address']?.toString()),
+                  _detailRow(
+                    'Monthly Fee',
+                    data['monthlyFee']?.toString() ?? 'N/A',
+                  ),
 
-                  _detailRow('Monthly Fee', data['monthlyFee']?.toString()),
-
-                  _detailRow('Fee Status', data['feeStatus']?.toString()),
+                  _detailRow(
+                    'Fee Status',
+                    data['feeStatus']?.toString() ?? 'Pending',
+                  ),
 
                   _detailRow(
                     'Account Status',
-                    data['accountStatus']?.toString(),
+                    data['is_active'] == true ||
+                            data['accountStatus'] == 'Active'
+                        ? 'Active'
+                        : 'Inactive',
+                  ),
+
+                  _detailRow(
+                    'Email Verified',
+                    data['email_verified'] == true ? 'Yes' : 'No',
+                  ),
+
+                  _detailRow(
+                    'Must Change Password',
+                    data['must_change_password'] == true ? 'Yes' : 'No',
                   ),
                 ],
               ),
             ),
           ),
-
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
               },
-
               child: const Text('Close', style: TextStyle(color: primaryColor)),
             ),
           ],
@@ -2451,7 +2779,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     .doc(docId)
                     .update({
                       'accountStatus': newStatus,
-
+                      'is_active': newStatus == 'Active',
                       'updatedAt': FieldValue.serverTimestamp(),
                     });
 
@@ -2495,10 +2823,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           ),
 
           content: Text(
-            'Are you sure you want to permanently delete '
-            '${studentName.isEmpty ? 'this student' : studentName}\'s account?\n\n'
-            'The student account and all attendance records for this student '
-            'will also be deleted.\n\n'
+            'Are you sure you want to delete '
+            '${studentName.isEmpty ? 'this student' : studentName}\'s Firestore record?\n\n'
+            'The student document and attendance records for this student '
+            'will be deleted. The Firebase Authentication account remains '
+            'and should be deactivated instead if login access must be blocked.\n\n'
             'This action cannot be undone.',
 
             style: const TextStyle(color: textSecondary),
@@ -2661,8 +2990,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         SnackBar(
           content: Text(
             attendanceReferences.isEmpty
-                ? 'Student account deleted successfully.'
-                : 'Student account and ${attendanceReferences.length} attendance record(s) deleted successfully.',
+                ? 'Student record deleted successfully.'
+                : 'Student record and ${attendanceReferences.length} attendance record(s) deleted successfully.',
           ),
         ),
       );
