@@ -1064,6 +1064,35 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         ? existingCourse
         : null;
 
+    const List<String> genderOptions = ['Male', 'Female', 'Other'];
+
+    final String? existingGender = existingData?['gender']?.toString().trim();
+
+    String? selectedGender =
+        existingGender != null && genderOptions.contains(existingGender)
+        ? existingGender
+        : null;
+
+    const List<String> gradeOptions = [
+      'Grade 1',
+      'Grade 2',
+      'Grade 3',
+      'Grade 4',
+      'Grade 5',
+      'Grade 6',
+      'Grade 7',
+      'Grade 8',
+      'Grade 9',
+      'Other',
+    ];
+
+    final String? existingGrade = existingData?['grade']?.toString().trim();
+
+    String? selectedGrade =
+        existingGrade != null && gradeOptions.contains(existingGrade)
+        ? existingGrade
+        : null;
+
     bool saving = false;
 
     // ==========================================================
@@ -1298,6 +1327,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   'phone': phoneController.text.trim(),
 
                   'course': selectedCourse!,
+
+                  'gender': selectedGender!,
+
+                  'grade': selectedGrade!,
 
                   'monthlyFee': double.parse(monthlyFeeController.text.trim()),
 
@@ -1866,6 +1899,138 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         const SizedBox(height: 12),
 
                         // ======================================
+                        // GENDER
+                        // ======================================
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedGender,
+                          dropdownColor: cardColor,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                          ),
+                          icon: const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: textSecondary,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Gender',
+                            hintText: 'Select Gender',
+                            labelStyle: const TextStyle(color: textSecondary),
+                            hintStyle: const TextStyle(color: textSecondary),
+                            filled: true,
+                            fillColor: bgColor,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(
+                                color: primaryColor,
+                                width: 1.5,
+                              ),
+                            ),
+                            errorStyle: const TextStyle(
+                              color: errorColor,
+                              fontSize: 12,
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null ||
+                                value.trim().isEmpty ||
+                                !genderOptions.contains(value)) {
+                              return 'Gender is required';
+                            }
+                            return null;
+                          },
+                          items: genderOptions.map((gender) {
+                            return DropdownMenuItem<String>(
+                              value: gender,
+                              child: Text(gender),
+                            );
+                          }).toList(),
+                          onChanged: saving
+                              ? null
+                              : (value) {
+                                  setDialogState(() {
+                                    selectedGender = value;
+                                  });
+                                },
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // ======================================
+                        // GRADE
+                        // ======================================
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedGrade,
+                          dropdownColor: cardColor,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                          ),
+                          icon: const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: textSecondary,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Grade',
+                            hintText: 'Select Grade',
+                            labelStyle: const TextStyle(color: textSecondary),
+                            hintStyle: const TextStyle(color: textSecondary),
+                            filled: true,
+                            fillColor: bgColor,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(
+                                color: primaryColor,
+                                width: 1.5,
+                              ),
+                            ),
+                            errorStyle: const TextStyle(
+                              color: errorColor,
+                              fontSize: 12,
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null ||
+                                value.trim().isEmpty ||
+                                !gradeOptions.contains(value)) {
+                              return 'Grade is required';
+                            }
+                            return null;
+                          },
+                          items: gradeOptions.map((grade) {
+                            return DropdownMenuItem<String>(
+                              value: grade,
+                              child: Text(grade),
+                            );
+                          }).toList(),
+                          onChanged: saving
+                              ? null
+                              : (value) {
+                                  setDialogState(() {
+                                    selectedGrade = value;
+                                  });
+                                },
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // ======================================
                         // MONTHLY FEE
                         // ======================================
                         _buildRequiredTextField(
@@ -2127,6 +2292,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   _detailRow('Course', data['course']?.toString()),
 
                   _detailRow('Gender', data['gender']?.toString()),
+
+                  _detailRow('Grade', data['grade']?.toString()),
 
                   _detailRow('Date of Birth', data['dateOfBirth']?.toString()),
 
