@@ -818,27 +818,75 @@ class DashboardScreen extends StatelessWidget {
     bool isLast, {
     String? currentPaymentStatus,
   }) {
-    final firstName = data['firstName']?.toString() ?? '';
+    // ------------------------------------------------------------
+    // STUDENT NAME
+    // Supports the actual Firestore fields used by Admin.
+    // ------------------------------------------------------------
+    final String firstName = (data['first_name'] ?? data['firstName'] ?? '')
+        .toString()
+        .trim();
 
-    final lastName = data['lastName']?.toString() ?? '';
+    final String lastName = (data['last_name'] ?? data['lastName'] ?? '')
+        .toString()
+        .trim();
 
-    final studentId = data['studentId']?.toString() ?? 'N/A';
+    final String fullName =
+        (data['full_name'] ?? data['fullName'] ?? '$firstName $lastName')
+            .toString()
+            .trim();
 
-    final course = data['course']?.toString() ?? 'General';
+    // ------------------------------------------------------------
+    // STUDENT ID
+    // ------------------------------------------------------------
+    final String studentId = (data['studentId'] ?? '').toString().trim().isEmpty
+        ? 'N/A'
+        : data['studentId'].toString().trim();
 
-    final feeStatus = currentPaymentStatus ?? 'notPaid';
+    // ------------------------------------------------------------
+    // COURSE / INSTRUMENT
+    // Admin saves this as preferred_instrument.
+    // ------------------------------------------------------------
+    final String course =
+        (data['preferred_instrument'] ?? data['course'] ?? 'General')
+            .toString()
+            .trim();
 
-    final accountStatus = data['accountStatus']?.toString() ?? 'Inactive';
+    // ------------------------------------------------------------
+    // PHONE
+    // ------------------------------------------------------------
+    // ignore: unused_local_variable
+    final String phone = (data['phone_number'] ?? data['phone'] ?? '')
+        .toString()
+        .trim();
 
-    final profilePhoto = data['profilePhoto']?.toString() ?? '';
+    // ------------------------------------------------------------
+    // FEE STATUS
+    // ------------------------------------------------------------
+    final String feeStatus = currentPaymentStatus ?? 'notPaid';
+
+    // ------------------------------------------------------------
+    // ACCOUNT STATUS
+    // Supports both old and current Firestore structures.
+    // ------------------------------------------------------------
+    final String accountStatus =
+        data['is_active'] == true ||
+            data['accountStatus']?.toString().toLowerCase() == 'active'
+        ? 'Active'
+        : 'Inactive';
+
+    // ------------------------------------------------------------
+    // PROFILE PHOTO
+    // ------------------------------------------------------------
+    final String profilePhoto =
+        (data['profile_photo'] ?? data['profilePhoto'] ?? '').toString().trim();
 
     final bool isSmall = constraints.maxWidth < 650;
 
-    final fullName = '$firstName $lastName'.trim();
+    final String displayName = fullName.isEmpty ? 'Unnamed Student' : fullName;
 
-    final feeStatusText = _paymentStatusLabel(feeStatus);
+    final String feeStatusText = _paymentStatusLabel(feeStatus);
 
-    final feeStatusColor = _paymentStatusColor(feeStatus);
+    final Color feeStatusColor = _paymentStatusColor(feeStatus);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -851,7 +899,7 @@ class DashboardScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
 
             children: [
-              _buildProfilePhoto(profilePhoto, fullName),
+              _buildProfilePhoto(profilePhoto, displayName),
 
               const SizedBox(width: 12),
 
@@ -861,7 +909,7 @@ class DashboardScreen extends StatelessWidget {
 
                   children: [
                     Text(
-                      fullName.isEmpty ? 'Unnamed Student' : fullName,
+                      displayName,
 
                       maxLines: 1,
 
@@ -916,10 +964,7 @@ class DashboardScreen extends StatelessWidget {
 
                 _buildStatusChip(
                   accountStatus,
-
-                  accountStatus.toLowerCase() == 'active'
-                      ? successColor
-                      : Colors.grey,
+                  accountStatus == 'Active' ? successColor : Colors.grey,
                 ),
               ],
             ],
@@ -937,10 +982,7 @@ class DashboardScreen extends StatelessWidget {
 
                 _buildStatusChip(
                   accountStatus,
-
-                  accountStatus.toLowerCase() == 'active'
-                      ? successColor
-                      : Colors.grey,
+                  accountStatus == 'Active' ? successColor : Colors.grey,
                 ),
               ],
             ),
