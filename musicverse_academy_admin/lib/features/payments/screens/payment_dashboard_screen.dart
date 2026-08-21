@@ -310,17 +310,19 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
                       }
                     }
 
-                    final firstName = (student['firstName'] ?? '').toString();
-                    final lastName = (student['lastName'] ?? '').toString();
-
-                    final studentName =
-                        (student['studentName'] ?? '$firstName $lastName')
-                            .toString()
-                            .trim();
+                    final studentName = _studentDisplayName(student);
 
                     final searchText =
-                        '$studentName $uid ${student['course'] ?? ''} '
-                                '${student['phone'] ?? ''}'
+                        '$studentName '
+                                '$uid '
+                                '${student['course'] ?? ''} '
+                                '${student['courseName'] ?? ''} '
+                                '${student['course_name'] ?? ''} '
+                                '${student['preferredInstrument'] ?? ''} '
+                                '${student['preferred_instrument'] ?? ''} '
+                                '${student['phone'] ?? ''} '
+                                '${student['phoneNumber'] ?? ''} '
+                                '${student['phone_number'] ?? ''}'
                             .toLowerCase();
 
                     final matchesSearch =
@@ -573,10 +575,24 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
 
   Widget _buildStudentPaymentTile(Map<String, dynamic> item) {
     final isActive = _isStudentActive(item);
-    final name = (item['studentName'] ?? 'Unknown Student').toString();
+    final name = _studentDisplayName(item);
     final studentId = _getStudentId(item);
-    final course = (item['course'] ?? 'N/A').toString();
-    final phone = (item['phone'] ?? 'N/A').toString();
+
+    final course =
+        (item['course'] ??
+                item['courseName'] ??
+                item['course_name'] ??
+                item['instrument'] ??
+                item['preferredInstrument'] ??
+                item['preferred_instrument'] ??
+                'N/A')
+            .toString()
+            .trim();
+
+    final phone =
+        (item['phone'] ?? item['phoneNumber'] ?? item['phone_number'] ?? 'N/A')
+            .toString()
+            .trim();
 
     final fee = item['monthlyFee'] is num
         ? (item['monthlyFee'] as num).toDouble()
@@ -990,7 +1006,11 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
   }
 
   String _getStudentId(Map<String, dynamic> item) {
-    final value = item['studentId'] ?? item['student_id'] ?? item['studentID'];
+    final value =
+        item['studentId'] ??
+        item['student_id'] ??
+        item['studentID'] ??
+        item['student_id_number'];
 
     if (value != null && value.toString().trim().isNotEmpty) {
       return value.toString().trim();
@@ -2237,7 +2257,16 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
 
     final studentId = _getStudentId(item);
 
-    final course = (item['course'] ?? 'N/A').toString();
+    final course =
+        (item['course'] ??
+                item['courseName'] ??
+                item['course_name'] ??
+                item['instrument'] ??
+                item['preferredInstrument'] ??
+                item['preferred_instrument'] ??
+                'N/A')
+            .toString()
+            .trim();
 
     final fee = payment['amountPaid'] is num
         ? (payment['amountPaid'] as num).toDouble()
@@ -3022,6 +3051,21 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
           'uid': uid,
           'studentId': studentId == 'Not assigned' ? '' : studentId,
           'studentName': studentName,
+
+          'course':
+              student['course'] ??
+              student['courseName'] ??
+              student['course_name'] ??
+              student['preferredInstrument'] ??
+              student['preferred_instrument'] ??
+              '',
+
+          'phone':
+              student['phone'] ??
+              student['phoneNumber'] ??
+              student['phone_number'] ??
+              '',
+
           'monthlyFee': monthlyFee,
           'amountPaid': 0,
           'status': 'Not Paid',
@@ -3048,14 +3092,29 @@ class _PaymentDashboardScreenState extends State<PaymentDashboardScreen> {
   }
 
   String _studentDisplayName(Map<String, dynamic> student) {
-    final directName = (student['studentName'] ?? '').toString().trim();
+    // 1. Direct full-name fields
+    final directName =
+        (student['studentName'] ??
+                student['student_name'] ??
+                student['full_name'] ??
+                student['fullName'] ??
+                '')
+            .toString()
+            .trim();
 
     if (directName.isNotEmpty) {
       return directName;
     }
 
-    final firstName = (student['firstName'] ?? '').toString().trim();
-    final lastName = (student['lastName'] ?? '').toString().trim();
+    // 2. First + last name
+    final firstName = (student['firstName'] ?? student['first_name'] ?? '')
+        .toString()
+        .trim();
+
+    final lastName = (student['lastName'] ?? student['last_name'] ?? '')
+        .toString()
+        .trim();
+
     final fullName = '$firstName $lastName'.trim();
 
     return fullName.isEmpty ? 'Unknown Student' : fullName;
