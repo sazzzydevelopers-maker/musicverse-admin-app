@@ -585,6 +585,27 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         ? data['grade'].toString().trim()
         : 'Not Set';
 
+    // ============================================================
+    // EMAIL + VERIFICATION STATUS
+    // ============================================================
+
+    final String email = data['email']?.toString().trim().isNotEmpty == true
+        ? data['email'].toString().trim()
+        : 'Not Set';
+
+    final bool emailVerified = data['email_verified'] == true;
+
+    final String emailVerificationText = emailVerified
+        ? 'Verified'
+        : 'Not Verified';
+
+    final Color emailVerificationColor = emailVerified
+        ? successColor
+        : errorColor;
+
+    final IconData emailVerificationIcon = emailVerified
+        ? Icons.verified_outlined
+        : Icons.mark_email_unread_outlined;
     final Widget menu = PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert, color: textSecondary),
       color: cardColor,
@@ -682,10 +703,17 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           isPaid ? successColor : errorColor,
           isPaid ? Icons.check_circle_outline : Icons.pending_outlined,
         ),
+
         _buildStudentStatusBadge(
           accountStatus,
           isActive ? successColor : Colors.grey,
           isActive ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+        ),
+
+        _buildStudentStatusBadge(
+          emailVerificationText,
+          emailVerificationColor,
+          emailVerificationIcon,
         ),
       ],
     );
@@ -743,6 +771,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     Icons.music_note_rounded,
                   ),
                   const SizedBox(height: 9),
+
+                  _buildStudentDetailLine('Email', email, Icons.email_outlined),
+                  const SizedBox(height: 9),
+
                   _buildStudentDetailLine('Phone', phone, Icons.phone_rounded),
                   const SizedBox(height: 9),
                   _buildStudentDetailLine(
@@ -2283,6 +2315,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       }
 
       // Send Firebase's normal verification email.
+      // NO Cloud Function is used.
       await studentUser.sendEmailVerification();
 
       return {'uid': studentUser.uid, 'temporaryPassword': temporaryPassword};
