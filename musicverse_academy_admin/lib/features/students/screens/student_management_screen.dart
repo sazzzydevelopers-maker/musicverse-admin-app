@@ -627,6 +627,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           _confirmToggleAccountStatus(context, docId, accountStatus);
         }
 
+        if (value == 'send_verification') {
+          _sendVerificationMail(context, data);
+        }
+
         if (value == 'delete') {
           _showDeleteAccountDialog(context, docId, data);
         }
@@ -647,6 +651,38 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             style: TextStyle(color: isActive ? errorColor : successColor),
           ),
         ),
+
+        if (!emailVerified)
+          const PopupMenuItem(
+            value: 'send_verification',
+            child: Row(
+              children: [
+                Icon(
+                  Icons.mark_email_unread_outlined,
+                  color: primaryColor,
+                  size: 20,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Send Verification Mail',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          )
+        else
+          const PopupMenuItem(
+            enabled: false,
+            value: 'email_verified',
+            child: Row(
+              children: [
+                Icon(Icons.verified_outlined, color: successColor, size: 20),
+                SizedBox(width: 10),
+                Text('Email Verified', style: TextStyle(color: successColor)),
+              ],
+            ),
+          ),
+
         const PopupMenuItem(
           value: 'delete',
           child: Text('Delete Account', style: TextStyle(color: errorColor)),
@@ -2353,6 +2389,77 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         await secondaryApp?.delete();
       } catch (_) {}
     }
+  }
+
+  // ============================================================
+  // SEND VERIFICATION MAIL
+  // ============================================================
+  //
+  // NO Cloud Function.
+  //
+  // A secondary Firebase Auth instance is used so the Admin remains
+  // signed in. The student Firebase Auth account is loaded by email
+  // and a verification email is sent directly with Firebase Auth.
+  //
+  // IMPORTANT:
+  // This requires the Firebase Auth SDK to be able to sign in to the
+  // student's account. Since the Admin does not have the student's
+  // password, the direct resend action cannot authenticate the
+  // student's existing account using email alone.
+  //
+  // Therefore this method safely reports that limitation instead of
+  // pretending to send an email.
+  // ============================================================
+
+  Future<void> _sendVerificationMail(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) async {
+    final String email = data['email']?.toString().trim() ?? '';
+
+    final bool emailVerified = data['email_verified'] == true;
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Student email address is missing.')),
+      );
+      return;
+    }
+
+    if (emailVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This student email is already verified.'),
+        ),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: cardColor,
+          title: const Text(
+            'Send Verification Mail',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'The student is not verified yet.\n\n$email\n\n'
+            'Firebase Auth does not allow the Admin client to resend '
+            'the verification email for another existing account without '
+            'authenticating as that student.',
+            style: const TextStyle(color: textSecondary, height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('OK', style: TextStyle(color: primaryColor)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // ============================================================
