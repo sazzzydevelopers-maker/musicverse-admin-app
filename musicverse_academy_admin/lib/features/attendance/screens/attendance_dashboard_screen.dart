@@ -273,23 +273,55 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                     userData['studentId'] ?? mergedData['studentId'] ?? '';
 
                 mergedData['firstName'] =
-                    userData['firstName'] ?? mergedData['firstName'] ?? '';
+                    userData['firstName'] ??
+                    userData['first_name'] ??
+                    mergedData['firstName'] ??
+                    mergedData['first_name'] ??
+                    '';
 
                 mergedData['lastName'] =
-                    userData['lastName'] ?? mergedData['lastName'] ?? '';
+                    userData['lastName'] ??
+                    userData['last_name'] ??
+                    mergedData['lastName'] ??
+                    mergedData['last_name'] ??
+                    '';
 
                 mergedData['course'] =
-                    userData['course'] ?? mergedData['course'] ?? '';
+                    userData['course'] ??
+                    userData['course_name'] ??
+                    userData['preferredInstrument'] ??
+                    userData['preferred_instrument'] ??
+                    userData['instrument'] ??
+                    mergedData['course'] ??
+                    mergedData['course_name'] ??
+                    mergedData['preferredInstrument'] ??
+                    mergedData['preferred_instrument'] ??
+                    mergedData['instrument'] ??
+                    '';
 
                 mergedData['phone'] =
-                    userData['phone'] ?? mergedData['phone'] ?? '';
+                    userData['phone'] ??
+                    userData['phoneNumber'] ??
+                    userData['phone_number'] ??
+                    userData['mobile'] ??
+                    userData['mobileNumber'] ??
+                    userData['mobile_number'] ??
+                    mergedData['phone'] ??
+                    mergedData['phoneNumber'] ??
+                    mergedData['phone_number'] ??
+                    mergedData['mobile'] ??
+                    mergedData['mobileNumber'] ??
+                    mergedData['mobile_number'] ??
+                    '';
 
                 mergedData['email'] =
                     userData['email'] ?? mergedData['email'] ?? '';
 
                 mergedData['profilePhoto'] =
                     userData['profilePhoto'] ??
+                    userData['profile_photo'] ??
                     mergedData['profilePhoto'] ??
+                    mergedData['profile_photo'] ??
                     '';
 
                 // --------------------------------------------------------
@@ -316,15 +348,9 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                   mergedData['status'] = userData['status'];
                 }
 
-                if ((mergedData['studentName'] ?? '')
-                    .toString()
-                    .trim()
-                    .isEmpty) {
-                  mergedData['studentName'] =
-                      '${mergedData['firstName'] ?? ''} '
-                              '${mergedData['lastName'] ?? ''}'
-                          .trim();
-                }
+                final String resolvedStudentName = _getStudentName(mergedData);
+
+                mergedData['studentName'] = resolvedStudentName;
 
                 mergedStudents.add(mergedData);
               }
@@ -693,8 +719,14 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                                 .toString();
 
                                         final String course =
-                                            (data['course'] ?? 'General')
-                                                .toString();
+                                            (data['course'] ??
+                                                    data['course_name'] ??
+                                                    data['preferredInstrument'] ??
+                                                    data['preferred_instrument'] ??
+                                                    data['instrument'] ??
+                                                    '')
+                                                .toString()
+                                                .trim();
 
                                         final String status =
                                             _statusForSelectedDate(data);
@@ -736,8 +768,13 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                                         final String phone =
                                             (data['phone'] ??
                                                     data['phoneNumber'] ??
-                                                    'N/A')
-                                                .toString();
+                                                    data['phone_number'] ??
+                                                    data['mobile'] ??
+                                                    data['mobileNumber'] ??
+                                                    data['mobile_number'] ??
+                                                    '')
+                                                .toString()
+                                                .trim();
 
                                         final String email =
                                             (data['email'] ?? '').toString();
@@ -1155,17 +1192,51 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
   // ============================================================
 
   String _getStudentName(Map<String, dynamic> data) {
-    final String studentName = (data['studentName'] ?? '').toString().trim();
+    // ============================================================
+    // 1. CHECK COMPLETE NAME FIELDS FIRST
+    // ============================================================
 
-    if (studentName.isNotEmpty) {
-      return studentName;
+    final List<String> directNameFields = [
+      'studentName',
+      'student_name',
+      'fullName',
+      'full_name',
+      'displayName',
+      'display_name',
+    ];
+
+    for (final field in directNameFields) {
+      final String name = (data[field] ?? '').toString().trim();
+
+      if (name.isNotEmpty && name.toLowerCase() != 'unknown student') {
+        return name;
+      }
     }
 
-    final String firstName = (data['firstName'] ?? '').toString().trim();
+    // ============================================================
+    // 2. CHECK FIRST + LAST NAME
+    // Supports BOTH camelCase and snake_case
+    // ============================================================
 
-    final String lastName = (data['lastName'] ?? '').toString().trim();
+    final String firstName = (data['firstName'] ?? data['first_name'] ?? '')
+        .toString()
+        .trim();
 
-    return '$firstName $lastName'.trim();
+    final String lastName = (data['lastName'] ?? data['last_name'] ?? '')
+        .toString()
+        .trim();
+
+    final String fullName = '$firstName $lastName'.trim();
+
+    if (fullName.isNotEmpty) {
+      return fullName;
+    }
+
+    // ============================================================
+    // 3. NO NAME FOUND
+    // ============================================================
+
+    return '';
   }
 
   // ============================================================
